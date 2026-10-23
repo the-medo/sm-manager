@@ -9,41 +9,53 @@ const escapeHTML = (value) =>
       ],
   );
 const e = escapeHTML;
-const colors = ["#7d9d64", "#a8bd8b", "#c5b69a", "#9eb5ad", "#c4cba5"];
+const colors = [
+  "#58a6ff",
+  "#63cf8c",
+  "#d2a8ff",
+  "#f0b65f",
+  "#f778ba",
+  "#56d4dd",
+  "#ff7b72",
+  "#a5d6ff",
+  "#b6dc7b",
+  "#c9b1fa",
+  "#e8ce97",
+  "#9cd5cb",
+];
 const state = {
   snapshot: null,
   history: null,
   hours: 24,
   metric: "memory_bytes",
-  entity: "host",
+  entity: "all",
   view: "overview",
   collapsed: new Set(),
   selected: null,
   historyRequest: 0,
+  historyLoading: false,
+  historyError: false,
+  hiddenSeries: new Set(),
+  projectColors: new Map(),
   online: true,
 };
 const views = {
-  overview: [
-    "Overview",
-    "Your machine, at a glance.",
-    "Every project, worktree, and container. One place to see what's running.",
-  ],
-  projects: [
-    "Projects",
-    "A place for every project.",
-    "From the main checkout to that one experimental branch.",
-  ],
-  containers: [
-    "Containers",
-    "A little order for Docker.",
-    "Running containers and the worktrees they belong to.",
-  ],
-  codex: [
-    "Codex activity",
-    "Behind the agent.",
-    "Local Codex activity and the resources its processes use.",
-  ],
+  overview: "Overview",
+  projects: "Projects",
+  containers: "Containers",
+  codex: "Codex",
 };
+
+function projectColor(id) {
+  if (!state.projectColors.has(id)) {
+    const index = state.projectColors.size;
+    state.projectColors.set(
+      id,
+      colors[index] || `hsl(${(index * 137.5) % 360} 70% 70%)`,
+    );
+  }
+  return state.projectColors.get(id);
+}
 
 function bytes(value, digits = 1) {
   if (value === null || value === undefined) return "—";
@@ -100,8 +112,8 @@ async function api(path) {
     throw new Error(data.error || `Monitor returned ${response.status}`);
   return data;
 }
-function metric(label, value, unit, caption, icon, fill) {
-  return `<article class="metric"><div class="metric-label">${label}<span class="metric-icon" aria-hidden="true">${icon}</span></div><div class="metric-value numeric">${value}<small>${unit}</small></div><div class="metric-caption">${caption}</div>${fill !== undefined ? `<div class="mini-meter"><span style="width:${Math.max(0, Math.min(100, fill))}%"></span></div>` : ""}</article>`;
+function metric(label, value, unit, caption, fill) {
+  return `<article class="metric"><div class="metric-label">${label}</div><div class="metric-value numeric">${value}<small>${unit}</small></div><div class="metric-caption">${caption}</div>${fill !== undefined ? `<div class="mini-meter"><span style="width:${Math.max(0, Math.min(100, fill))}%"></span></div>` : ""}</article>`;
 }
 function renderMetrics() {
   const { system, totals } = state.snapshot;
@@ -112,7 +124,6 @@ function renderMetrics() {
       used.toFixed(1),
       "GiB",
       `of ${(system.memory_total / 1024 ** 3).toFixed(1)} GiB <span class="muted">·</span> ${bytes(system.memory_total - system.memory_used)} available`,
-      "▥",
       (system.memory_used / system.memory_total) * 100,
     ) +
     metric(
@@ -120,15 +131,13 @@ function renderMetrics() {
       system.cpu_percent.toFixed(1),
       "%",
       `${system.cores} logical cores <span class="muted">·</span> whole machine`,
-      "⌘",
       system.cpu_percent,
     ) +
     metric(
       "Running worktrees",
       totals.running_worktrees,
       `<span class="muted">/ ${totals.worktree_count}</span>`,
-      `<strong>${plural(totals.running_projects, "project")} active</strong> across your workspace`,
-      "⑂",
+      `<strong>${plural(totals.running_projects, "project")} active</strong> · ${plural(totals.process_count, "process")}`,
       totals.worktree_count
         ? (totals.running_worktrees / totals.worktree_count) * 100
         : 0,
@@ -140,7 +149,6 @@ function renderMetrics() {
       state.snapshot.docker.available
         ? `${totals.container_count - state.snapshot.unassigned_containers.length} mapped <span class="muted">·</span> ${state.snapshot.unassigned_containers.length} unassigned`
         : "Docker is currently unavailable",
-      "▤",
       totals.container_count
         ? ((totals.container_count -
             state.snapshot.unassigned_containers.length) /
@@ -151,18 +159,18 @@ function renderMetrics() {
 }
 function renderAllocation() {
   const { projects, totals, codex } = state.snapshot;
-  const visible = projects.filter((p) => p.memory_bytes > 0).slice(0, 4);
+  const visible = projects.filter((p) => p.memory_bytes > 0).slice(0, 6);
   if (codex.memory_bytes)
     visible.push({ name: "Codex processes", memory_bytes: codex.memory_bytes });
   const maximum = Math.max(1, ...visible.map((p) => p.memory_bytes));
   $("allocation").innerHTML = visible.length
     ? visible
         .map(
-          (p, i) =>
-            `<div class="allocation-row"><div class="allocation-label"><span class="allocation-color" style="background:${colors[i % colors.length]}"></span><strong>${e(p.name)}</strong><span>${bytes(p.memory_bytes)}</span></div><div class="allocation-track"><span style="background:${colors[i % colors.length]};width:${(p.memory_bytes / maximum) * 100}%"></span></div></div>`,
+          (p) =>
+            `<div class="allocation-row"><div class="allocation-label"><span class="allocation-color" style="background:${p.id ? projectColor(p.id) : "#91a0b2"}"></span><strong>${e(p.name)}</strong><span>${bytes(p.memory_bytes)}</span></div><div class="allocation-track"><span style="background:${p.id ? projectColor(p.id) : "#91a0b2"};width:${(p.memory_bytes / maximum) * 100}%"></span></div></div>`,
         )
         .join("")
-    : '<p class="allocation-empty">No project processes are running.<br>Your workspace has some breathing room.</p>';
+    : '<p class="inline-note">No running project processes.</p>';
   $("allocation").title =
     `${bytes(totals.memory_bytes)} attributed to projects. Estimates may include shared memory more than once.`;
 }
@@ -196,10 +204,10 @@ function renderProjects() {
     ? projects
         .map((p) => {
           const collapsed = state.collapsed.has(p.id);
-          return `<article class="project-card"><div class="project-heading"><div class="project-monogram">${e(p.name.substring(0, 1).toUpperCase())}</div><div class="project-identity"><div class="project-title">${e(p.name)}<span class="running-badge ${p.running_worktrees ? "" : "idle"}">${p.running_worktrees ? '<span class="status-dot"></span> Running' : "Idle"}</span></div><div class="project-meta">${plural(p.worktrees.length, "worktree")} shown <span class="muted">·</span> ${plural(p.process_count, "process")} <span class="muted">·</span> ${plural(p.container_count, "container")}</div></div><div class="project-totals numeric"><span>${bytes(p.memory_bytes)}<small>Memory</small></span><span>${percent(p.cpu_percent)}<small>CPU</small></span></div><button class="collapse-button" data-collapse="${e(p.id)}" aria-expanded="${!collapsed}" aria-controls="tree-${e(p.id)}" aria-label="${collapsed ? "Expand" : "Collapse"} ${e(p.name)}">${collapsed ? "+" : "−"}</button></div><div id="tree-${e(p.id)}" ${collapsed ? "hidden" : ""}><div class="tree-columns"><span>Worktree / branch</span><span>Services</span><span>Memory</span><span>CPU</span><span></span></div>${p.worktrees.map((w) => `<div class="worktree-row" data-worktree="${e(w.id)}" role="button" tabindex="0" aria-label="Inspect ${e(p.name)} ${e(w.branch)}"><div class="worktree-name"><span class="branch-icon" aria-hidden="true">⑂</span><div style="min-width:0"><span class="branch-title" title="${e(w.path)}">${e(w.branch)}</span><span class="branch-info">${w.is_main ? "Main checkout" : "Worktree"}${w.codex_managed ? '<span>·</span><span class="codex-marker">✳ Codex</span>' : ""}${!w.running ? "<span>· Idle</span>" : ""}</span></div></div><span class="service-summary">${w.processes.length ? plural(w.processes.length, "process") : ""}${w.processes.length && w.containers.length ? " · " : ""}${w.containers.length ? plural(w.containers.length, "container") : ""}${!w.running ? "No running services" : ""}</span><span class="row-memory">${w.running ? bytes(w.memory_bytes) : "—"}</span><span class="row-cpu">${w.running ? percent(w.cpu_percent) : "—"}</span><span class="row-arrow" aria-hidden="true">↗</span></div>`).join("")}</div></article>`;
+          return `<article class="project-card"><div class="project-heading"><div class="project-identity"><div class="project-title">${e(p.name)}<span class="running-badge ${p.running_worktrees ? "" : "idle"}">${p.running_worktrees ? '<span class="status-dot"></span> Running' : "Idle"}</span></div><div class="project-meta">${p.worktrees.length} wt · ${p.process_count} proc · ${p.container_count} ctr</div></div><div class="project-totals numeric"><span title="Project memory">${bytes(p.memory_bytes)}</span><span title="Project CPU">${percent(p.cpu_percent)}</span></div><button class="collapse-button" data-collapse="${e(p.id)}" aria-expanded="${!collapsed}" aria-controls="tree-${e(p.id)}" aria-label="${collapsed ? "Expand" : "Collapse"} ${e(p.name)}">${collapsed ? "+" : "−"}</button></div><div id="tree-${e(p.id)}" ${collapsed ? "hidden" : ""}><div class="tree-columns"><span>Worktree / branch</span><span class="services-heading">Proc / containers</span><span class="ports-heading">Ports</span><span class="align-right">Memory</span><span class="align-right">CPU</span><span></span></div>${p.worktrees.map((w) => `<div class="worktree-row" data-worktree="${e(w.id)}" role="button" tabindex="0" aria-label="Inspect ${e(p.name)} ${e(w.branch)}"><div class="worktree-name"><span class="branch-icon" aria-hidden="true">⑂</span><div class="branch-label"><span class="branch-title" title="${e(w.path)}">${e(w.branch)}</span><span class="branch-info">${w.is_main ? "[main]" : ""}${w.codex_managed ? '<span class="codex-marker" title="Codex worktree">✳</span>' : ""}</span></div></div><span class="service-summary">${w.running ? `${w.processes.length} proc / ${w.containers.length} ctr` : "Idle"}</span><span class="row-ports" title="${e(w.ports.join(", "))}">${w.ports.length ? e(w.ports.join(", ")) : "—"}</span><span class="row-memory">${w.running ? bytes(w.memory_bytes) : "—"}</span><span class="row-cpu">${w.running ? percent(w.cpu_percent) : "—"}</span><span class="row-arrow" aria-hidden="true">↗</span></div>`).join("")}</div></article>`;
         })
         .join("")
-    : `<div class="empty">${$("search").value ? "No projects match your search." : "Nothing running here right now."}<p>${$("running-only").checked ? "Turn off “Running only” to browse all discovered worktrees." : "Add project directories to your local configuration to discover more."}</p></div>`;
+    : `<div class="empty">${$("search").value ? "No projects match your search." : "No running projects."}<p>${$("running-only").checked ? "Turn off “Running only” to view idle worktrees." : "Add project directories in the local configuration."}</p></div>`;
 }
 function processTable(processes) {
   if (!processes.length)
@@ -207,9 +215,7 @@ function processTable(processes) {
   return `<table class="host-table"><thead><tr><th scope="col">Process</th><th scope="col">Memory</th><th scope="col">CPU</th><th scope="col">PID</th></tr></thead><tbody>${processes.map((p) => `<tr><td>${e(p.name)}</td><td>${bytes(p.memory_bytes)}</td><td>${percent(p.cpu_percent)}</td><td>${p.pid}</td></tr>`).join("")}</tbody></table>`;
 }
 function renderHost() {
-  $("host-processes").innerHTML = processTable(
-    state.snapshot.other_processes.slice(0, 5),
-  );
+  $("host-processes").innerHTML = processTable(state.snapshot.other_processes);
 }
 function allContainers() {
   const result = [
@@ -232,15 +238,14 @@ function renderContainers() {
 function renderCodex() {
   const c = state.snapshot.codex;
   $("codex-section").innerHTML =
-    `<div class="codex-grid">${metric("Threads updated · 24h", c.available ? c.recent_threads : "—", "", c.available ? `${c.thread_count} threads in local metadata` : "Metadata unavailable", "✳")}${metric("Codex worktrees", c.managed_worktrees, "", "Existing Git checkouts in the Codex directory", "⑂")}${metric("Codex process memory", (c.memory_bytes / 1024 ** 2).toFixed(0), "MiB", `${percent(c.cpu_percent)} of machine CPU · ${plural(c.processes.length, "process")}`, "▥")}</div><article class="panel info-panel"><h2>A small window into local activity</h2><p>Thread counts use the last update time in Codex's local metadata. An updated thread doesn't necessarily mean an agent is running. Worktree ownership comes from Git and local paths.</p><p>This monitor reads thread directories, update times, and worktree attachments. Conversation text, credentials, and prompts are not collected. Token spend and billing aren't tracked.</p><p class="inline-note">${e(c.status)} · metadata refreshes once a minute</p></article><div class="section-heading"><div><h2>Codex processes</h2><p>Agent runtime overhead, shown separately from project services.</p></div></div><div class="panel">${processTable(c.processes)}</div>`;
+    `<div class="codex-grid">${metric("Threads updated · 24h", c.available ? c.recent_threads : "—", "", `${c.thread_count} stored threads`)}${metric("Codex worktrees", c.managed_worktrees, "", "Existing Git checkouts")}${metric("Codex memory", (c.memory_bytes / 1024 ** 2).toFixed(0), "MiB", `${percent(c.cpu_percent)} CPU · ${plural(c.processes.length, "process")}`)}</div><article class="panel info-panel"><p>${e(c.status)} · refreshed every minute. Thread recency indicates metadata updates, not active agents. Conversation text and token costs are not collected.</p></article><div class="section-heading"><h2>Codex processes</h2></div><div class="panel">${processTable(c.processes)}</div>`;
 }
 function setView() {
   const requested = location.hash.substring(1);
   state.view = views[requested] ? requested : "overview";
-  const [name, title, description] = views[state.view];
-  $("breadcrumb-current").textContent = name;
-  $("page-title").textContent = title;
-  $("page-description").textContent = description;
+  $("breadcrumb-current").textContent = views[state.view];
+  document.title = `SM Manager · ${views[state.view]}`;
+  $("dashboard").dataset.view = state.view;
   document.querySelectorAll("[data-view]").forEach((el) => {
     el.classList.toggle("active", el.dataset.view === state.view);
     if (el.dataset.view === state.view) el.setAttribute("aria-current", "page");
@@ -253,109 +258,238 @@ function setView() {
   $("host-section").hidden = state.view !== "overview";
   $("metrics").hidden = state.view === "codex";
 }
+function historySources() {
+  const projects = [...(state.snapshot?.projects || [])].sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+  if (state.entity === "all") {
+    return [
+      {
+        entity: "projects",
+        label: "All projects",
+        color: "#dce3ed",
+        total: true,
+      },
+      ...projects.map((p) => ({
+        entity: `project:${p.id}`,
+        label: p.name,
+        color: projectColor(p.id),
+      })),
+    ];
+  }
+  if (state.entity === "host")
+    return [{ entity: "host", label: "Whole machine", color: "#58a6ff" }];
+  if (state.entity === "projects")
+    return [
+      {
+        entity: "projects",
+        label: "All projects",
+        color: "#dce3ed",
+        total: true,
+      },
+    ];
+  for (const project of projects) {
+    if (state.entity === `project:${project.id}`)
+      return [
+        {
+          entity: state.entity,
+          label: project.name,
+          color: projectColor(project.id),
+        },
+      ];
+    const worktree = project.worktrees.find(
+      (w) => state.entity === `worktree:${w.id}`,
+    );
+    if (worktree)
+      return [
+        {
+          entity: state.entity,
+          label: `${project.name} / ${worktree.branch}`,
+          color: projectColor(project.id),
+        },
+      ];
+  }
+  return [];
+}
 function renderChart() {
   const data = state.history;
-  if (!data) {
-    $("chart").innerHTML =
-      '<div class="chart-placeholder">Loading history…</div>';
-    return;
-  }
-  const points = data.points;
-  if (!points.length) {
-    $("chart").innerHTML =
-      '<div class="chart-placeholder">The first samples will appear here shortly.</div>';
-    return;
-  }
+  const current =
+    data && data.entity === state.entity && data.hours === state.hours;
   const isMemory = state.metric === "memory_bytes";
-  const end = Date.now() / 1000;
-  const start = end - state.hours * 3600;
-  const width = Math.max(240, $("chart").clientWidth - 34),
-    height = 172,
-    left = 47,
-    right = 15,
-    top = 12,
-    bottom = 26;
+  $("history-subtitle").textContent =
+    `${state.hours}h · ${isMemory ? "memory" : "machine CPU %"}`;
+  if (!current) {
+    $("chart").innerHTML =
+      `<div class="chart-placeholder">${state.historyError ? "History unavailable. Retrying…" : "Loading history…"}</div>`;
+    $("chart-legend").innerHTML = "";
+    $("chart").setAttribute("aria-label", "Resource history loading");
+    $("history-note").textContent = state.historyError
+      ? "History request failed"
+      : "Loading samples…";
+    return;
+  }
+  const visible = data.series.filter(
+    (series) => !state.hiddenSeries.has(series.entity) && !series.error,
+  );
+  const points = visible.flatMap((series) => series.history.points);
+  const format = (value) => (isMemory ? bytes(value) : percent(value));
+  const legend = data.series
+    .map((series) => {
+      const enabled = !state.hiddenSeries.has(series.entity);
+      const latest = series.history?.points.at(-1)?.[state.metric];
+      const value = series.error
+        ? "unavailable"
+        : latest === undefined
+          ? "no samples"
+          : format(latest);
+      return `<button class="legend-item" data-series-toggle="${e(series.entity)}" aria-pressed="${enabled}" ${series.error ? "disabled" : ""} title="${e(series.label)} · latest bucket average · click to ${enabled ? "hide" : "show"}"><span class="legend-swatch ${series.total ? "total" : ""}" style="--series-color:${series.color}"></span><span class="legend-name">${e(series.label)}</span><span class="legend-value">${value}</span></button>`;
+    })
+    .join("");
+  const focusedSeries = $("chart-legend").contains(document.activeElement)
+    ? document.activeElement.dataset.seriesToggle
+    : null;
+  if ($("chart-legend").innerHTML !== legend) {
+    $("chart-legend").innerHTML = legend;
+    if (focusedSeries)
+      [...$("chart-legend").querySelectorAll("[data-series-toggle]")]
+        .find((button) => button.dataset.seriesToggle === focusedSeries)
+        ?.focus({ preventScroll: true });
+  }
+  const errors = data.series.filter((series) => series.error).length;
+  const starts = data.series
+    .map((series) => series.history?.started_at)
+    .filter(Number.isFinite);
+  $("history-note").textContent = errors
+    ? `${errors} series unavailable · available series shown`
+    : state.historyLoading
+      ? "Updating samples…"
+      : starts.length
+        ? `Since ${new Date(Math.min(...starts) * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })} · bucket averages · gaps = no data`
+        : "No samples in this range";
+  if (!points.length) {
+    const message = visible.length
+      ? "No samples in this range."
+      : errors === data.series.length
+        ? "History unavailable. Retrying…"
+        : "No series selected. Toggle a legend item to show it.";
+    $("chart").innerHTML = `<div class="chart-placeholder">${message}</div>`;
+    $("chart").setAttribute("aria-label", message);
+    return;
+  }
+  const end = data.asOf;
+  const start = end - data.hours * 3600;
+  const width = Math.max(250, $("chart").clientWidth);
+  const height = $("chart").clientHeight || 180;
+  const left = 47,
+    right = 10,
+    top = 10,
+    bottom = 25;
   const graphW = width - left - right,
     graphH = height - top - bottom;
-  const max = isMemory
-    ? Math.max(64 * 1024 ** 2, ...points.map((p) => p.memory_bytes * 1.25))
-    : Math.max(10, ...points.map((p) => p.cpu_percent * 1.25));
-  const memoryStep = max >= 1024 ** 3 ? 512 * 1024 ** 2 : 16 * 1024 ** 2;
-  const ceiling = isMemory
-    ? Math.ceil(max / memoryStep) * memoryStep
-    : Math.min(100, Math.ceil(max / 10) * 10);
+  const max = Math.max(
+    isMemory ? 64 * 1024 ** 2 : 1,
+    ...points.map((point) => point[state.metric] * 1.12),
+  );
+  const step = isMemory
+    ? max >= 1024 ** 3
+      ? 256 * 1024 ** 2
+      : 16 * 1024 ** 2
+    : max < 5
+      ? 0.5
+      : 5;
+  const ceiling = Math.ceil(max / step) * step;
   const x = (timestamp) =>
     left +
     Math.max(0, Math.min(1, (timestamp - start) / (end - start))) * graphW;
-  const y = (value) => top + graphH - Math.min(1, value / ceiling) * graphH;
-  const segments = [];
-  for (const point of points) {
-    let segment = segments[segments.length - 1];
-    if (
-      !segment ||
-      point.timestamp - segment[segment.length - 1].timestamp >
-        data.bucket_seconds * 2.5
-    ) {
-      segment = [];
-      segments.push(segment);
-    }
-    segment.push(point);
-  }
+  const y = (value) => top + graphH - (value / ceiling) * graphH;
+  const axisValue = (value) =>
+    isMemory
+      ? ceiling >= 1024 ** 3
+        ? `${(value / 1024 ** 3).toFixed(1)}G`
+        : `${(value / 1024 ** 2).toFixed(0)}M`
+      : `${value.toFixed(ceiling < 5 ? 1 : 0)}%`;
   const grid = [0, 0.25, 0.5, 0.75, 1]
     .map(
       (r) =>
-        `<line x1="${left}" x2="${width - right}" y1="${y(ceiling * r)}" y2="${y(ceiling * r)}" stroke="#edf1e6" stroke-dasharray="3 4"/><text x="${left - 9}" y="${y(ceiling * r) + 3}" text-anchor="end">${isMemory ? (ceiling >= 1024 ** 3 ? `${((ceiling * r) / 1024 ** 3).toFixed(1)}G` : `${((ceiling * r) / 1024 ** 2).toFixed(0)}M`) : `${(ceiling * r).toFixed(0)}%`}</text>`,
+        `<line class="chart-grid" x1="${left}" x2="${width - right}" y1="${y(ceiling * r)}" y2="${y(ceiling * r)}"/><text x="${left - 8}" y="${y(ceiling * r) + 3}" text-anchor="end">${axisValue(ceiling * r)}</text>`,
     )
     .join("");
-  const labels = [0, 0.25, 0.5, 0.75, 1]
+  const ticks = width < 450 ? [0, 0.5, 1] : [0, 0.25, 0.5, 0.75, 1];
+  const labels = ticks
     .map(
       (r) =>
-        `<text x="${left + graphW * r}" y="${height - 4}" text-anchor="${r === 0 ? "start" : r === 1 ? "end" : "middle"}">${r === 1 ? "Now" : new Date((start + state.hours * 3600 * r) * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</text>`,
+        `<text x="${left + graphW * r}" y="${height - 4}" text-anchor="${r === 0 ? "start" : r === 1 ? "end" : "middle"}">${r === 1 ? "Now" : new Date((start + data.hours * 3600 * r) * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false })}</text>`,
     )
     .join("");
-  const color = isMemory ? "#8daa6f" : "#baa685";
-  const lines = segments
-    .map((segment) => {
-      const path = segment
-        .map(
-          (p, i) =>
-            `${i === 0 ? "M" : "L"}${x(p.timestamp).toFixed(1)},${y(p[state.metric]).toFixed(1)}`,
-        )
-        .join(" ");
-      const first = segment[0],
-        last = segment[segment.length - 1];
-      return `<path d="${path} L${x(last.timestamp)},${y(0)} L${x(first.timestamp)},${y(0)} Z" fill="url(#chart-gradient)"/><path d="${path}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>${segment.length === 1 ? `<circle cx="${x(first.timestamp)}" cy="${y(first[state.metric])}" r="3" fill="${color}"/>` : ""}`;
+  const lines = [...visible]
+    .sort((a, b) => Number(!!a.total) - Number(!!b.total))
+    .map((series) => {
+      const segments = [];
+      for (const point of series.history.points) {
+        let segment = segments.at(-1);
+        if (
+          !segment ||
+          point.timestamp - segment.at(-1).timestamp >
+            series.history.bucket_seconds * 1.5
+        ) {
+          segment = [];
+          segments.push(segment);
+        }
+        segment.push(point);
+      }
+      return `<g data-series="${e(series.entity)}"><title>${e(series.label)}</title>${segments
+        .map((segment) => {
+          const path = segment
+            .map(
+              (p, index) =>
+                `${index ? "L" : "M"}${x(p.timestamp).toFixed(1)},${y(p[state.metric]).toFixed(1)}`,
+            )
+            .join(" ");
+          return `<path d="${path}" fill="none" stroke="${series.color}" stroke-width="${series.total ? 2 : 1.6}" ${series.total ? 'stroke-dasharray="5 4"' : ""} stroke-linecap="round" stroke-linejoin="round"/>${segment.length === 1 ? `<circle cx="${x(segment[0].timestamp)}" cy="${y(segment[0][state.metric])}" r="2.5" fill="${series.color}"/>` : ""}`;
+        })
+        .join("")}</g>`;
     })
     .join("");
   $("chart").innerHTML =
-    `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="chart-gradient" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="${color}" stop-opacity=".22"/><stop offset="100%" stop-color="${color}" stop-opacity=".02"/></linearGradient></defs>${grid}${lines}${labels}</svg>`;
+    `<svg viewBox="0 0 ${width} ${height}" aria-hidden="true">${grid}${lines}${labels}</svg>`;
   $("chart").setAttribute(
     "aria-label",
-    `${isMemory ? "Memory" : "CPU"} history for the last ${state.hours} hours. ${points.length} collected points. Latest: ${isMemory ? bytes(points.at(-1).memory_bytes) : percent(points.at(-1).cpu_percent)}.`,
+    `${isMemory ? "Memory" : "CPU"} history, last ${data.hours} hours. ${visible.length} visible series: ${visible.map((series) => series.label).join(", ")}.`,
   );
-  $("history-note").textContent =
-    `Collecting since ${new Date(data.started_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · gaps mean no samples`;
-  $("history-subtitle").textContent =
-    `${state.hours}-hour view · ${isMemory ? "memory in use" : "share of total CPU capacity"}`;
 }
 async function loadHistory() {
+  if (!state.snapshot) return;
   const request = ++state.historyRequest;
-  try {
-    const history = await api(
-      `/api/history?hours=${state.hours}&entity=${encodeURIComponent(state.entity)}`,
-    );
-    if (request !== state.historyRequest) return;
-    state.history = history;
-    renderChart();
-  } catch {
-    if (request === state.historyRequest) {
-      $("history-note").textContent =
-        "History unavailable · retrying on the next refresh";
-      if (!state.history)
-        $("chart").innerHTML =
-          '<div class="chart-placeholder">History is temporarily unavailable.</div>';
-    }
-  }
+  const hours = state.hours,
+    entity = state.entity;
+  const sources = historySources();
+  state.historyLoading = true;
+  state.historyError = false;
+  renderChart();
+  // Each series has its own failure state; one unavailable project must not hide the rest.
+  const results = await Promise.allSettled(
+    sources.map((source) =>
+      api(
+        `/api/history?hours=${hours}&entity=${encodeURIComponent(source.entity)}`,
+      ),
+    ),
+  );
+  if (request !== state.historyRequest) return;
+  state.historyLoading = false;
+  state.historyError =
+    results.length > 0 &&
+    results.every((result) => result.status === "rejected");
+  state.history = {
+    entity,
+    hours,
+    asOf: Date.now() / 1000,
+    series: sources.map((source, index) =>
+      results[index].status === "fulfilled"
+        ? { ...source, history: results[index].value }
+        : { ...source, error: true },
+    ),
+  };
+  renderChart();
 }
 function findWorktree(id) {
   for (const p of state.snapshot.projects) {
@@ -371,7 +505,7 @@ function openDetail(id) {
   $("detail-project").textContent = w.project_name;
   $("detail-title").textContent = w.branch;
   $("detail-content").innerHTML =
-    `<p class="detail-path">${e(w.path)}</p><div class="detail-stats"><div><strong>${bytes(w.memory_bytes)}</strong><small>Resource memory estimate</small></div><div><strong>${percent(w.cpu_percent)}</strong><small>Whole-machine CPU</small></div><div><strong>${w.processes.length + w.containers.length}</strong><small>Processes + containers</small></div></div><div class="detail-links">${w.urls.map((link) => `<a class="button" href="${e(link.url)}" target="_blank" rel="noreferrer">Open app :${link.port} ↗</a>`).join("")}</div><p class="inline-note">${w.ports.length ? `Listening / published ports: ${w.ports.join(", ")}<br>` : ""}${w.recent_threads} Codex threads updated in this directory in 24h · ${e(ago(w.last_codex_activity))}<br>Snapshot taken ${new Date(state.snapshot.timestamp * 1000).toLocaleTimeString()} · reopen to refresh</p><div class="detail-section"><h3>Processes <span class="count-pill">${w.processes.length}</span></h3>${w.processes.length ? w.processes.map((p) => `<div class="detail-service"><div><strong>${e(p.name)}</strong><small>PID ${p.pid} · ${e(p.ownership)}${p.ports.length ? ` · :${p.ports.join(", :")}` : ""}</small><small>${e(p.cwd || "Directory unavailable")}</small></div><span>${bytes(p.memory_bytes)}<small>${percent(p.cpu_percent)} CPU</small></span></div>`).join("") : '<p class="inline-note">No host processes in this worktree.</p>'}</div><div class="detail-section"><h3>Containers <span class="count-pill">${w.containers.length}</span></h3>${w.containers.length ? w.containers.map((c) => `<div class="detail-service"><div><strong>${e(c.name)}</strong><small>${e(c.image)} · ${e(c.id.substring(0, 12))}</small><small>Matched by ${e(c.ownership)}</small></div><span>${bytes(c.memory_bytes)}<small>${percent(c.cpu_percent)} CPU</small></span></div>`).join("") : '<p class="inline-note">No containers mapped to this worktree.</p>'}</div><div class="cleanup-panel"><h3>A tidy handoff to your agent</h3><p>Copy a cleanup brief with this worktree's resource IDs. Your agent can review ownership and stop the app using its own lifecycle tools.</p><button class="button primary" id="copy-cleanup">Copy cleanup brief <span aria-hidden="true">↗</span></button><p class="inline-note">This button only copies text. Nothing is stopped or deleted.</p></div>`;
+    `<p class="detail-path">${e(w.path)}</p><div class="detail-stats"><div><strong>${bytes(w.memory_bytes)}</strong><small>Resource memory estimate</small></div><div><strong>${percent(w.cpu_percent)}</strong><small>Whole-machine CPU</small></div><div><strong>${w.processes.length + w.containers.length}</strong><small>Processes + containers</small></div></div><div class="detail-links">${w.urls.map((link) => `<a class="button" href="${e(link.url)}" target="_blank" rel="noreferrer">Open app :${link.port} ↗</a>`).join("")}</div><p class="inline-note">${w.ports.length ? `Listening / published ports: ${w.ports.join(", ")}<br>` : ""}${w.recent_threads} Codex threads updated in this directory in 24h · ${e(ago(w.last_codex_activity))}<br>Snapshot taken ${new Date(state.snapshot.timestamp * 1000).toLocaleTimeString()} · reopen to refresh</p><div class="detail-section"><h3>Processes <span class="count-pill">${w.processes.length}</span></h3>${w.processes.length ? w.processes.map((p) => `<div class="detail-service"><div><strong>${e(p.name)}</strong><small>PID ${p.pid} · ${e(p.ownership)}${p.ports.length ? ` · :${p.ports.join(", :")}` : ""}</small><small>${e(p.cwd || "Directory unavailable")}</small></div><span>${bytes(p.memory_bytes)}<small>${percent(p.cpu_percent)} CPU</small></span></div>`).join("") : '<p class="inline-note">No host processes in this worktree.</p>'}</div><div class="detail-section"><h3>Containers <span class="count-pill">${w.containers.length}</span></h3>${w.containers.length ? w.containers.map((c) => `<div class="detail-service"><div><strong>${e(c.name)}</strong><small>${e(c.image)} · ${e(c.id.substring(0, 12))}</small><small>Matched by ${e(c.ownership)}</small></div><span>${bytes(c.memory_bytes)}<small>${percent(c.cpu_percent)} CPU</small></span></div>`).join("") : '<p class="inline-note">No containers mapped to this worktree.</p>'}</div><div class="cleanup-panel"><h3>Cleanup brief</h3><p>Copy a cleanup brief with this worktree's resource IDs. Your agent can review ownership and stop the app using its own lifecycle tools.</p><button class="button primary" id="copy-cleanup">Copy cleanup brief <span aria-hidden="true">↗</span></button><p class="inline-note">This button only copies text. Nothing is stopped or deleted.</p></div>`;
   if (!$("detail-dialog").open) $("detail-dialog").showModal();
   $("copy-cleanup").addEventListener("click", async () => {
     try {
@@ -400,6 +534,9 @@ function render() {
     .join("");
   $("footer-meta").textContent =
     `Read only · every ${s.interval}s · ${s.collection_ms}ms to collect`;
+  [...s.projects]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .forEach((project) => projectColor(project.id));
   renderMetrics();
   renderAllocation();
   renderProjects();
@@ -407,7 +544,7 @@ function render() {
   renderContainers();
   renderCodex();
   const options =
-    '<option value="host">Whole machine</option><option value="projects">All projects</option>' +
+    '<option value="all">All — project comparison</option><option value="host">Whole machine</option><option value="projects">All projects · total</option>' +
     s.projects
       .map(
         (p) =>
@@ -424,8 +561,8 @@ function render() {
     $("history-entity").innerHTML = options;
     $("history-entity").value = state.entity;
     if (!$("history-entity").value) {
-      state.entity = "host";
-      $("history-entity").value = "host";
+      state.entity = "all";
+      $("history-entity").value = "all";
     }
   }
   updateConnection();
@@ -483,7 +620,17 @@ $("chart-tabs").addEventListener("click", (event) => {
 });
 $("history-entity").addEventListener("change", (event) => {
   state.entity = event.target.value;
+  state.hiddenSeries.clear();
   loadHistory();
+});
+$("chart-legend").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-series-toggle]");
+  if (!button) return;
+  const entity = button.dataset.seriesToggle;
+  state.hiddenSeries.has(entity)
+    ? state.hiddenSeries.delete(entity)
+    : state.hiddenSeries.add(entity);
+  renderChart();
 });
 document.addEventListener("click", (event) => {
   const collapse = event.target.closest("[data-collapse]");

@@ -11,6 +11,9 @@ agent to inspect the host every time.
 - Groups running processes and containers by Git repository and worktree.
 - Shows machine CPU, memory, swap, listening ports, and larger host processes.
 - Keeps a rolling 24 hours of machine, project, and worktree history in SQLite.
+- Compares all projects on one CPU or memory chart, with a dashed combined-total
+  line and a clickable legend. Individual project, worktree, and whole-machine
+  views remain available.
 - Discovers Codex worktrees and shows local thread recency and runtime overhead.
 - Links to apps that already have a private Tailscale Serve route.
 - Copies a cleanup brief with exact resource identities for an agent to review.
