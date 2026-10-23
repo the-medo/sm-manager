@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#f7f8f4" />
+    <title>SM Manager · Your machine, at a glance</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <aside class="sidebar">
+      <a href="#overview" class="brand"
+        ><img src="/favicon.svg" width="36" height="36" alt="" /><span
+          >sm<span class="brand-light"> / manager</span></span
+        ></a
+      >
+      <div class="workspace-label">YOUR WORKSPACE</div>
+      <nav aria-label="Main navigation">
+        <a href="#overview" data-view="overview" class="nav-link active"
+          ><span class="nav-icon">◫</span> Overview</a
+        >
+        <a href="#projects" data-view="projects" class="nav-link"
+          ><span class="nav-icon">⌘</span> Projects
+          <span class="nav-count" id="nav-projects">—</span></a
+        >
+        <a href="#containers" data-view="containers" class="nav-link"
+          ><span class="nav-icon">▤</span> Containers
+          <span class="nav-count" id="nav-containers">—</span></a
+        >
+        <a href="#codex" data-view="codex" class="nav-link"
+          ><span class="nav-icon">✳</span> Codex activity</a
+        >
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="private-note">
+          <span class="small-symbol">⌂</span>
+          <div>
+            <strong>At home on your machine</strong>
+            <p>Local data. A quieter overview.</p>
+          </div>
+        </div>
+        <div class="machine">
+          <span class="machine-icon">▰</span>
+          <div>
+            <strong id="machine-name">Connecting…</strong
+            ><span id="machine-platform">Linux · local monitor</span>
+          </div>
+          <span class="status-dot"></span>
+        </div>
+        <div class="sidebar-version">SM MANAGER <span>v0.1</span></div>
+      </div>
+    </aside>
+    <main>
+      <div class="topbar">
+        <span
+          ><span class="breadcrumb">Workspace</span><span class="slash">/</span
+          ><span id="breadcrumb-current">Overview</span></span
+        >
+        <div class="connection" id="connection" role="status">
+          <span class="status-dot"></span><span>Connecting</span>
+        </div>
+      </div>
+      <header class="page-header">
+        <div>
+          <div class="eyebrow">A LITTLE LESS GUESSWORK</div>
+          <h1 id="page-title">Your machine, at a glance.</h1>
+          <p id="page-description">
+            Every project, worktree, and container. One place to see what's
+            running.
+          </p>
+        </div>
+        <button class="button" id="copy-report">
+          <span aria-hidden="true">↗</span> Copy system report
+        </button>
+      </header>
+      <div id="warnings" aria-live="polite"></div>
+      <div id="loading" class="loading">
+        <span class="loader"></span>
+        <h2>Getting to know your workspace</h2>
+        <p>Reading local processes, worktrees, and containers…</p>
+      </div>
+      <div id="dashboard" hidden>
+        <section
+          class="metrics"
+          id="metrics"
+          aria-label="Machine statistics"
+        ></section>
+        <div id="overview-content">
+          <section class="overview-grid">
+            <article class="panel history-panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>Resource activity</h2>
+                  <p id="history-subtitle">
+                    A rolling 24-hour view of your machine
+                  </p>
+                </div>
+                <div
+                  class="segmented"
+                  id="history-range"
+                  aria-label="History range"
+                >
+                  <button data-hours="1">1h</button
+                  ><button data-hours="6">6h</button
+                  ><button data-hours="24" class="selected" aria-pressed="true">
+                    24h
+                  </button>
+                </div>
+              </div>
+              <div class="chart-toolbar">
+                <div class="chart-tabs" id="chart-tabs">
+                  <button data-metric="memory_bytes" class="selected">
+                    <span class="legend-dot"></span> Memory</button
+                  ><button data-metric="cpu_percent">
+                    <span class="legend-dot cpu"></span> CPU
+                  </button>
+                </div>
+                <label class="sr-only" for="history-entity"
+                  >History source</label
+                ><select id="history-entity">
+                  <option value="host">Whole machine</option>
+                  <option value="projects">All projects</option>
+                </select>
+              </div>
+              <div
+                id="chart"
+                class="chart"
+                role="img"
+                aria-label="Resource history chart"
+              ></div>
+              <div class="chart-footer">
+                <span id="history-note">History builds as the monitor runs</span
+                ><span
+                  >24h retention <span class="muted">·</span> local SQLite</span
+                >
+              </div>
+            </article>
+            <article class="panel allocation-panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>Where memory goes</h2>
+                  <p>Project resource estimates</p>
+                </div>
+                <span class="small-symbol">↗</span>
+              </div>
+              <div id="allocation"></div>
+              <div class="allocation-note">
+                Process RSS + container working set.<br />Shared pages can
+                appear in multiple processes.
+              </div>
+            </article>
+          </section>
+        </div>
+        <section id="project-section" class="project-section">
+          <div class="section-heading">
+            <div>
+              <h2>
+                Your projects
+                <span class="count-pill" id="project-count">0</span>
+              </h2>
+              <p id="project-description">
+                Running apps, grouped by repository and worktree.
+              </p>
+            </div>
+            <label class="toggle-label"
+              ><input type="checkbox" id="running-only" checked /><span
+                class="switch"
+              ></span>
+              Running only</label
+            >
+          </div>
+          <div class="project-toolbar">
+            <label class="search"
+              ><span aria-hidden="true">⌕</span
+              ><input
+                id="search"
+                type="search"
+                placeholder="Find a project, branch, or path…"
+                aria-label="Search projects"
+            /></label>
+            <div class="sort-field">
+              <label for="sort">Sort by</label
+              ><select id="sort">
+                <option value="memory">Memory usage</option>
+                <option value="cpu">CPU usage</option>
+                <option value="name">Project name</option>
+              </select>
+            </div>
+          </div>
+          <div id="projects"></div>
+        </section>
+        <section id="containers-section" hidden></section>
+        <section id="codex-section" hidden></section>
+        <section id="host-section" class="host-section">
+          <div class="section-heading">
+            <div>
+              <h2>Beyond your projects</h2>
+              <p>The largest host processes outside project worktrees.</p>
+            </div>
+            <span class="subtle-tag">HOST PROCESSES</span>
+          </div>
+          <div class="panel" id="host-processes"></div>
+        </section>
+        <footer>
+          <span
+            ><span class="status-dot"></span> Observing, never
+            interrupting.</span
+          ><span id="footer-meta">Read-only monitor · samples every 10s</span>
+        </footer>
+      </div>
+    </main>
+    <dialog id="detail-dialog" aria-labelledby="detail-title">
+      <div class="dialog-header">
+        <div>
+          <div class="eyebrow" id="detail-project"></div>
+          <h2 id="detail-title"></h2>
+        </div>
+        <button
+          class="icon-button"
+          id="close-detail"
+          aria-label="Close worktree details"
+        >
+          ×
+        </button>
+      </div>
+      <div id="detail-content"></div>
+    </dialog>
+    <div id="toast" class="toast" role="status" hidden></div>
+  </body>
+</html>

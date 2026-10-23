@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env*
+*.sqlite*
+config.local.json
+.runtime/
+test-results/
+node_modules/
+build/
+dist/
+*.egg-info/

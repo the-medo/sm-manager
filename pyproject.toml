@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sm-manager"
+version = "0.1.0"
+description = "A quiet, local dashboard for projects, worktrees, and the resources they use."
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+sm-manager = "sm_manager.__main__:main"
+
+[tool.setuptools.package-data]
+sm_manager = ["static/*"]
+
+[tool.setuptools.packages.find]
+include = ["sm_manager*"]
