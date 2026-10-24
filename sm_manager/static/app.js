@@ -227,12 +227,17 @@ function allContainers() {
         result.push({ ...c, owner: `${p.name} / ${w.branch}` });
   return result.sort((a, b) => (b.memory_bytes || 0) - (a.memory_bytes || 0));
 }
+function containerOwner(container) {
+  return container.owner
+    ? `<button class="text-button" data-worktree="${e(container.worktree_id)}" title="${e(container.owner)}">⑂ ${e(container.owner)}</button>`
+    : '<span class="muted">Unassigned</span>';
+}
 function renderContainers() {
   const containers = allContainers();
   $("containers-section").innerHTML =
     `<div class="section-heading"><div><h2>Running containers <span class="count-pill">${containers.length}</span></h2><p>${e(state.snapshot.docker.status)}</p></div></div>` +
     (containers.length
-      ? `<div class="container-grid">${containers.map((c) => `<article class="panel container-card"><h3>${e(c.name)}</h3><p class="image-name">${e(c.image)} <span class="muted">·</span> ${e(c.id.substring(0, 12))}</p><div class="container-stats"><div><strong>${bytes(c.memory_bytes)}</strong><small>Working set</small></div><div><strong>${percent(c.cpu_percent)}</strong><small>Machine CPU</small></div><div><strong>${c.pids ?? "—"}</strong><small>Tasks / threads</small></div></div><p class="inline-note">${c.ports.length ? `Published ports: ${c.ports.join(", ")}` : "No published ports"}${!c.stats_available ? " · Statistics unavailable" : ""}</p><div class="container-owner">${c.owner ? `<button class="text-button" data-worktree="${e(c.worktree_id)}">⑂ ${e(c.owner)}</button>` : "<span>Unassigned · ownership needs review</span>"}<span>${e(c.ownership)}</span></div></article>`).join("")}</div>`
+      ? `<div class="panel container-list"><table class="container-table"><caption class="sr-only">Running containers, sorted by memory usage</caption><colgroup><col class="container-name-column"><col class="container-memory-column"><col class="container-tasks-column"><col class="container-cpu-column"><col class="container-owner-column"><col class="container-ports-column"></colgroup><thead><tr><th scope="col">Container</th><th scope="col" class="container-memory" title="Container working set">Memory ↓</th><th scope="col" class="container-tasks" title="Processes and kernel threads">Tasks</th><th scope="col" class="container-cpu" title="Share of whole-machine CPU">CPU</th><th scope="col" class="container-owner-cell">Worktree</th><th scope="col" class="container-ports-cell">Ports</th></tr></thead><tbody>${containers.map((c) => `<tr class="container-row"><td class="container-name-cell"><strong class="container-name" title="${e(c.name)}">${e(c.name)}</strong><span class="container-image" title="${e(c.image)}">${e(c.image)}</span><span class="container-id">${e(c.id.substring(0, 12))}${!c.stats_available ? '<span class="container-stats-warning"> · Stats unavailable</span>' : ""}</span><div class="container-mobile-owner">${containerOwner(c)}</div><span class="container-mobile-ports">${c.ports.length ? `Ports: ${c.ports.join(", ")}` : "No published ports"}</span></td><td class="container-memory">${bytes(c.memory_bytes)}</td><td class="container-tasks">${c.pids ?? "—"}</td><td class="container-cpu">${percent(c.cpu_percent)}</td><td class="container-owner-cell">${containerOwner(c)}<span class="container-ownership">${e(c.ownership)}</span></td><td class="container-ports-cell">${c.ports.length ? c.ports.join(", ") : "—"}</td></tr>`).join("")}</tbody></table></div>`
       : `<div class="empty">${state.snapshot.docker.available ? "No containers are running." : "Docker is unavailable."}<p>${state.snapshot.docker.available ? "Containers will appear here when they start." : "The host monitor is still running. Check the configured Docker socket and permissions."}</p></div>`);
 }
 function renderCodex() {

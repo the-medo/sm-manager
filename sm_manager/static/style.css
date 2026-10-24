@@ -872,50 +872,106 @@ footer {
   margin: 7px 0 0;
   font-size: 10px;
 }
-.container-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+.container-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  text-align: left;
 }
-.container-card {
-  padding: 12px;
+.container-memory-column {
+  width: 130px;
 }
-.container-card h3 {
-  font: 600 11px var(--mono);
-  margin: 0;
-  overflow-wrap: anywhere;
+.container-tasks-column {
+  width: 70px;
 }
-.image-name {
-  font: 10px/1.5 var(--mono);
-  overflow-wrap: anywhere;
-  margin: 8px 0;
+.container-cpu-column {
+  width: 80px;
 }
-.container-stats {
-  display: flex;
-  gap: 25px;
-  margin: 12px 0;
+.container-owner-column {
+  width: 27%;
 }
-.container-stats strong {
-  display: block;
-  font: 18px var(--mono);
+.container-ports-column {
+  width: 90px;
 }
-.container-stats small {
-  display: block;
-  font-size: 9px;
+.container-table th {
+  background: #171f29;
   color: var(--muted);
+  text-transform: uppercase;
+  font: 9px var(--mono);
+  letter-spacing: 0.4px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.container-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid #202b37;
+  font: 11px/1.4 var(--mono);
+  vertical-align: middle;
+}
+.container-table tr:last-child td {
+  border-bottom: 0;
+}
+.container-row:hover {
+  background: #182330;
+}
+.container-name,
+.container-image,
+.container-id,
+.container-ownership {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.container-name {
+  font-size: 11px;
+  font-weight: 600;
+}
+.container-image,
+.container-id,
+.container-ownership {
+  color: var(--muted);
+  font-size: 9px;
   margin-top: 3px;
 }
-.container-owner {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  gap: 7px;
-  padding-top: 8px;
-  margin-top: 8px;
-  border-top: 1px solid var(--line);
-  font-size: 9px;
+.container-table .container-memory,
+.container-table .container-tasks,
+.container-table .container-cpu {
+  text-align: right;
+  white-space: nowrap;
+}
+.container-table th.container-memory {
+  color: #9dceff;
+  font-weight: 600;
+}
+.container-table td.container-memory {
+  color: #cbe4ff;
+  font-size: 16px;
+  font-weight: 600;
+}
+.container-table td.container-tasks {
+  font-size: 12px;
+}
+.container-table td.container-cpu {
   color: var(--muted);
+}
+.container-ports-cell {
+  color: #86b5e6;
+  overflow-wrap: anywhere;
+}
+.container-table .text-button {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.container-stats-warning {
+  color: #e3b86a;
+}
+.container-mobile-owner,
+.container-mobile-ports {
+  display: none;
 }
 .text-button {
   border: 0;
@@ -1119,11 +1175,16 @@ dialog::backdrop {
   .host-section .host-table td:first-child {
     max-width: none;
   }
-  .container-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 @media (max-width: 1000px) {
+  .container-owner-column,
+  .container-owner-cell {
+    display: none;
+  }
+  .container-mobile-owner {
+    display: block;
+    margin-top: 5px;
+  }
   .sidebar {
     width: 54px;
     padding: 15px 5px;
@@ -1343,8 +1404,42 @@ dialog::backdrop {
   .tree-columns {
     font-size: 8px;
   }
-  .container-grid {
-    grid-template-columns: 1fr;
+  .container-ports-column,
+  .container-ports-cell {
+    display: none;
+  }
+  .container-memory-column {
+    width: 104px;
+  }
+  .container-tasks-column {
+    width: 43px;
+  }
+  .container-cpu-column {
+    width: 55px;
+  }
+  .container-table td,
+  .container-table th {
+    padding: 8px 7px;
+  }
+  .container-table th {
+    font-size: 8px;
+  }
+  .container-table td.container-memory {
+    font-size: 14px;
+  }
+  .container-table td.container-tasks,
+  .container-table td.container-cpu {
+    font-size: 10px;
+  }
+  .container-name {
+    font-size: 10px;
+  }
+  .container-mobile-ports {
+    display: block;
+    color: var(--muted);
+    font-size: 9px;
+    margin-top: 3px;
+    overflow-wrap: anywhere;
   }
   .codex-grid {
     grid-template-columns: 1fr;
