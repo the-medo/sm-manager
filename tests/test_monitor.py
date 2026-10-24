@@ -124,8 +124,9 @@ class HistoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             history = History(directory)
             now = int(time.time())
-            history.db.execute("INSERT INTO samples VALUES(?,?,?,?)", (now - RETENTION - 100, "host", 99, 999))
-            snapshot = {"timestamp": now - 10, "system": {"cpu_percent": 5, "memory_used": 100}, "totals": {"cpu_percent": 2, "memory_bytes": 20}, "projects": []}
+            for entity in ("host", "codex", "other"):
+                history.db.execute("INSERT INTO samples VALUES(?,?,?,?)", (now - RETENTION - 100, entity, 99, 999))
+            snapshot = {"timestamp": now - 10, "system": {"cpu_percent": 5, "memory_used": 100}, "totals": {"cpu_percent": 2, "memory_bytes": 20}, "codex": {"cpu_percent": 1, "memory_bytes": 30}, "projects": []}
             history.record(snapshot)
             snapshot["timestamp"] = now
             history.record(snapshot)
@@ -135,6 +136,31 @@ class HistoryTests(unittest.TestCase):
             history.close()
             history = History(directory)
             self.assertEqual(history.query("host", 24)["points"][-1]["memory_bytes"], 100)
+            self.assertEqual(history.query("codex", 24)["points"][-1]["memory_bytes"], 30)
+            self.assertEqual(history.query("other", 24)["points"][-1]["memory_bytes"], 50)
+            history.close()
+
+    def test_codex_and_system_remainder_are_recorded_together(self):
+        with tempfile.TemporaryDirectory() as directory:
+            history = History(directory)
+            now = int(time.time())
+            # Earlier versions did not collect Codex usage. Do not invent it.
+            history.db.execute("INSERT INTO samples VALUES(?,?,?,?)", (now - 1000, "host", 5, 1000))
+            self.assertEqual(history.query("codex", now=now)["points"], [])
+            self.assertEqual(history.query("other", now=now)["points"], [])
+            snapshot = {"timestamp": now, "system": {"cpu_percent": 10, "memory_used": 1000},
+                        "totals": {"cpu_percent": 3, "memory_bytes": 200},
+                        "codex": {"cpu_percent": 2, "memory_bytes": 300}, "projects": []}
+            history.record(snapshot)
+            for entity, memory, cpu in [("host", 1000, 10), ("projects", 200, 3), ("codex", 300, 2), ("other", 500, 5)]:
+                point = history.query(entity, now=now)["points"][-1]
+                self.assertEqual(point["memory_bytes"], memory)
+                self.assertEqual(point["cpu_percent"], cpu)
+            snapshot["totals"] = {"cpu_percent": 12, "memory_bytes": 1200}
+            history.record(snapshot)
+            point = history.query("other", now=now)["points"][-1]
+            self.assertEqual(point["memory_bytes"], 0)
+            self.assertEqual(point["cpu_percent"], 0)
             history.close()
 
 

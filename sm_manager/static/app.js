@@ -23,6 +23,8 @@ const colors = [
   "#e8ce97",
   "#9cd5cb",
 ];
+const codexColor = "#c4b5fd";
+const otherColor = "#91a0b2";
 const state = {
   snapshot: null,
   history: null,
@@ -37,6 +39,8 @@ const state = {
   historyError: false,
   hiddenSeries: new Set(),
   projectColors: new Map(),
+  chart: null,
+  chartCursor: null,
   online: true,
 };
 const views = {
@@ -158,16 +162,28 @@ function renderMetrics() {
     );
 }
 function renderAllocation() {
-  const { projects, totals, codex } = state.snapshot;
+  const { projects, totals, codex, system } = state.snapshot;
   const visible = projects.filter((p) => p.memory_bytes > 0).slice(0, 6);
   if (codex.memory_bytes)
-    visible.push({ name: "Codex processes", memory_bytes: codex.memory_bytes });
+    visible.push({
+      name: "Codex processes",
+      memory_bytes: codex.memory_bytes,
+      color: codexColor,
+    });
+  visible.push({
+    name: "System & other",
+    memory_bytes: Math.max(
+      0,
+      system.memory_used - totals.memory_bytes - codex.memory_bytes,
+    ),
+    color: otherColor,
+  });
   const maximum = Math.max(1, ...visible.map((p) => p.memory_bytes));
   $("allocation").innerHTML = visible.length
     ? visible
         .map(
           (p) =>
-            `<div class="allocation-row"><div class="allocation-label"><span class="allocation-color" style="background:${p.id ? projectColor(p.id) : "#91a0b2"}"></span><strong>${e(p.name)}</strong><span>${bytes(p.memory_bytes)}</span></div><div class="allocation-track"><span style="background:${p.id ? projectColor(p.id) : "#91a0b2"};width:${(p.memory_bytes / maximum) * 100}%"></span></div></div>`,
+            `<div class="allocation-row"><div class="allocation-label"><span class="allocation-color" style="background:${p.id ? projectColor(p.id) : p.color}"></span><strong>${e(p.name)}</strong><span>${bytes(p.memory_bytes)}</span></div><div class="allocation-track"><span style="background:${p.id ? projectColor(p.id) : p.color};width:${(p.memory_bytes / maximum) * 100}%"></span></div></div>`,
         )
         .join("")
     : '<p class="inline-note">No running project processes.</p>';
@@ -267,14 +283,28 @@ function historySources() {
   const projects = [...(state.snapshot?.projects || [])].sort((a, b) =>
     a.name.localeCompare(b.name),
   );
+  const shared = [
+    { entity: "host", label: "Whole machine", color: "#f0f6fc", total: true },
+    {
+      entity: "projects",
+      label: "All projects",
+      color: "#aab5c4",
+      total: true,
+      dash: "6 4",
+    },
+    { entity: "codex", label: "Codex processes", color: codexColor },
+    {
+      entity: "other",
+      label: "System & other",
+      color: otherColor,
+      dash: "3 4",
+      description:
+        "Remainder after projects and Codex; includes system, other apps and unassigned containers.",
+    },
+  ];
   if (state.entity === "all") {
     return [
-      {
-        entity: "projects",
-        label: "All projects",
-        color: "#dce3ed",
-        total: true,
-      },
+      ...shared,
       ...projects.map((p) => ({
         entity: `project:${p.id}`,
         label: p.name,
@@ -282,17 +312,8 @@ function historySources() {
       })),
     ];
   }
-  if (state.entity === "host")
-    return [{ entity: "host", label: "Whole machine", color: "#58a6ff" }];
-  if (state.entity === "projects")
-    return [
-      {
-        entity: "projects",
-        label: "All projects",
-        color: "#dce3ed",
-        total: true,
-      },
-    ];
+  if (shared.some((series) => series.entity === state.entity))
+    return shared.filter((series) => series.entity === state.entity);
   for (const project of projects) {
     if (state.entity === `project:${project.id}`)
       return [
@@ -317,6 +338,7 @@ function historySources() {
   return [];
 }
 function renderChart() {
+  state.chart = null;
   const data = state.history;
   const current =
     data && data.entity === state.entity && data.hours === state.hours;
@@ -347,7 +369,7 @@ function renderChart() {
         : latest === undefined
           ? "no samples"
           : format(latest);
-      return `<button class="legend-item" data-series-toggle="${e(series.entity)}" aria-pressed="${enabled}" ${series.error ? "disabled" : ""} title="${e(series.label)} · latest bucket average · click to ${enabled ? "hide" : "show"}"><span class="legend-swatch ${series.total ? "total" : ""}" style="--series-color:${series.color}"></span><span class="legend-name">${e(series.label)}</span><span class="legend-value">${value}</span></button>`;
+      return `<button class="legend-item" data-series-toggle="${e(series.entity)}" aria-pressed="${enabled}" ${series.error ? "disabled" : ""} title="${e(series.label)} · latest bucket average · click to ${enabled ? "hide" : "show"}${series.description ? ` · ${e(series.description)}` : ""}"><span class="legend-swatch ${series.dash ? "dashed" : ""}" style="--series-color:${series.color}"></span><span class="legend-name">${e(series.label)}</span><span class="legend-value">${value}</span></button>`;
     })
     .join("");
   const focusedSeries = $("chart-legend").contains(document.activeElement)
@@ -384,10 +406,10 @@ function renderChart() {
   const end = data.asOf;
   const start = end - data.hours * 3600;
   const width = Math.max(250, $("chart").clientWidth);
-  const height = $("chart").clientHeight || 180;
-  const left = 47,
+  const height = $("chart").clientHeight || 300;
+  const left = 52,
     right = 10,
-    top = 10,
+    top = 25,
     bottom = 25;
   const graphW = width - left - right,
     graphH = height - top - bottom;
@@ -402,7 +424,10 @@ function renderChart() {
     : max < 5
       ? 0.5
       : 5;
-  const ceiling = Math.ceil(max / step) * step;
+  const capacity = isMemory ? state.snapshot.system.memory_total : 0;
+  const ceiling = capacity
+    ? Math.max(capacity, ...points.map((point) => point[state.metric]))
+    : Math.ceil(max / step) * step;
   const x = (timestamp) =>
     left +
     Math.max(0, Math.min(1, (timestamp - start) / (end - start))) * graphW;
@@ -419,6 +444,9 @@ function renderChart() {
         `<line class="chart-grid" x1="${left}" x2="${width - right}" y1="${y(ceiling * r)}" y2="${y(ceiling * r)}"/><text x="${left - 8}" y="${y(ceiling * r) + 3}" text-anchor="end">${axisValue(ceiling * r)}</text>`,
     )
     .join("");
+  const capacityLine = capacity
+    ? `<g class="chart-capacity"><line x1="${left}" x2="${width - right}" y1="${y(capacity)}" y2="${y(capacity)}"/><text x="${width - right}" y="${y(capacity) - 9}" text-anchor="end">${bytes(capacity)} total capacity</text></g>`
+    : "";
   const ticks = width < 450 ? [0, 0.5, 1] : [0, 0.25, 0.5, 0.75, 1];
   const labels = ticks
     .map(
@@ -450,17 +478,91 @@ function renderChart() {
                 `${index ? "L" : "M"}${x(p.timestamp).toFixed(1)},${y(p[state.metric]).toFixed(1)}`,
             )
             .join(" ");
-          return `<path d="${path}" fill="none" stroke="${series.color}" stroke-width="${series.total ? 2 : 1.6}" ${series.total ? 'stroke-dasharray="5 4"' : ""} stroke-linecap="round" stroke-linejoin="round"/>${segment.length === 1 ? `<circle cx="${x(segment[0].timestamp)}" cy="${y(segment[0][state.metric])}" r="2.5" fill="${series.color}"/>` : ""}`;
+          return `<path d="${path}" fill="none" stroke="${series.color}" stroke-width="${series.total ? 2 : 1.6}" ${series.dash ? `stroke-dasharray="${series.dash}"` : ""} stroke-linecap="round" stroke-linejoin="round"/>${segment.length === 1 ? `<circle cx="${x(segment[0].timestamp)}" cy="${y(segment[0][state.metric])}" r="2.5" fill="${series.color}"/>` : ""}`;
         })
         .join("")}</g>`;
     })
     .join("");
   $("chart").innerHTML =
-    `<svg viewBox="0 0 ${width} ${height}" aria-hidden="true">${grid}${lines}${labels}</svg>`;
+    `<svg viewBox="0 0 ${width} ${height}" aria-hidden="true">${grid}${capacityLine}${lines}${labels}<g id="chart-cursor" hidden></g></svg><div id="chart-tooltip" class="chart-tooltip" role="tooltip" aria-live="off" hidden></div>`;
   $("chart").setAttribute(
     "aria-label",
-    `${isMemory ? "Memory" : "CPU"} history, last ${data.hours} hours. ${visible.length} visible series: ${visible.map((series) => series.label).join(", ")}.`,
+    `${isMemory ? "Memory" : "CPU"} history, last ${data.hours} hours.${capacity ? ` Total capacity ${bytes(capacity)}.` : ""} ${visible.length} visible series: ${visible.map((series) => series.label).join(", ")}.`,
   );
+  state.chart = {
+    visible,
+    format,
+    x,
+    y,
+    start,
+    end,
+    left,
+    graphW,
+    top,
+    graphH,
+    capacity,
+    timestamps: [...new Set(points.map((point) => point.timestamp))].sort(
+      (a, b) => a - b,
+    ),
+  };
+  if (state.chartCursor !== null) showChartTooltip(state.chartCursor);
+}
+function hideChartTooltip() {
+  state.chartCursor = null;
+  if ($("chart-tooltip")) $("chart-tooltip").hidden = true;
+  if ($("chart-cursor")) $("chart-cursor").setAttribute("hidden", "");
+}
+function showChartTooltip(timestamp, announce = false) {
+  const chart = state.chart;
+  if (!chart) return;
+  const nearest = chart.timestamps.reduce((best, time) =>
+    Math.abs(time - timestamp) < Math.abs(best - timestamp) ? time : best,
+  );
+  const tooltip = $("chart-tooltip");
+  if (state.chartCursor === nearest && !tooltip.hidden) return;
+  state.chartCursor = nearest;
+  const values = chart.visible.map((series) => ({
+    ...series,
+    point: series.history.points.find((point) => point.timestamp === nearest),
+  }));
+  const bucket = chart.visible[0].history.bucket_seconds;
+  const time = new Date(nearest * 1000).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const until = new Date((nearest + bucket) * 1000).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  tooltip.setAttribute("aria-live", announce ? "polite" : "off");
+  tooltip.innerHTML = `<div class="tooltip-heading"><strong>${e(time)}–${e(until)}</strong><span>Bucket averages</span></div>${values.map((series) => `<div class="tooltip-row" data-tooltip-series="${e(series.entity)}"><span class="legend-swatch ${series.dash ? "dashed" : ""}" style="--series-color:${series.color}"></span><span class="tooltip-name" title="${e(series.label)}">${e(series.label)}</span><strong>${series.point ? chart.format(series.point[state.metric]) : "—"}</strong></div>`).join("")}<div class="tooltip-note">${chart.capacity ? `${bytes(chart.capacity)} total capacity · ` : ""}— = no sample</div>`;
+  tooltip.hidden = false;
+  const cursorX = chart.x(nearest);
+  const tooltipX =
+    cursorX + tooltip.offsetWidth + 14 <= $("chart").clientWidth
+      ? cursorX + 14
+      : cursorX - tooltip.offsetWidth - 14;
+  tooltip.style.left = `${Math.max(4, Math.min($("chart").clientWidth - tooltip.offsetWidth - 4, tooltipX))}px`;
+  $("chart-cursor").innerHTML =
+    `<line class="chart-crosshair" x1="${chart.x(nearest)}" x2="${chart.x(nearest)}" y1="${chart.top}" y2="${chart.top + chart.graphH}"/>${values
+      .filter((series) => Number.isFinite(series.point?.[state.metric]))
+      .map(
+        (series) =>
+          `<circle cx="${chart.x(nearest)}" cy="${chart.y(series.point[state.metric])}" r="3" fill="${series.color}" stroke="#0c121a" stroke-width="1.5"/>`,
+      )
+      .join("")}`;
+  $("chart-cursor").removeAttribute("hidden");
+}
+function chartPointer(event) {
+  if (!state.chart || event.target.closest(".chart-tooltip")) return;
+  const chart = state.chart;
+  const offset = event.clientX - $("chart").getBoundingClientRect().left;
+  const ratio = Math.max(0, Math.min(1, (offset - chart.left) / chart.graphW));
+  showChartTooltip(chart.start + ratio * (chart.end - chart.start));
 }
 async function loadHistory() {
   if (!state.snapshot) return;
@@ -549,7 +651,7 @@ function render() {
   renderContainers();
   renderCodex();
   const options =
-    '<option value="all">All — project comparison</option><option value="host">Whole machine</option><option value="projects">All projects · total</option>' +
+    '<option value="all">All — resource comparison</option><option value="host">Whole machine</option><option value="projects">All projects · total</option><option value="codex">Codex processes</option><option value="other">System &amp; other</option>' +
     s.projects
       .map(
         (p) =>
@@ -636,6 +738,44 @@ $("chart-legend").addEventListener("click", (event) => {
     ? state.hiddenSeries.delete(entity)
     : state.hiddenSeries.add(entity);
   renderChart();
+});
+$("chart").addEventListener("pointermove", (event) => {
+  if (event.pointerType !== "touch") chartPointer(event);
+});
+$("chart").addEventListener("pointerdown", chartPointer);
+$("chart").addEventListener("pointerleave", (event) => {
+  if (event.pointerType !== "touch") hideChartTooltip();
+});
+$("chart").addEventListener("focus", () => {
+  if (state.chart) showChartTooltip(state.chart.end, true);
+});
+$("chart").addEventListener("blur", hideChartTooltip);
+$("chart").addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    hideChartTooltip();
+    return;
+  }
+  const timestamps = state.chart?.timestamps;
+  if (
+    !timestamps ||
+    !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)
+  )
+    return;
+  event.preventDefault();
+  let index =
+    state.chartCursor === null
+      ? timestamps.length - 1
+      : timestamps.indexOf(state.chartCursor);
+  if (event.key === "Home") index = 0;
+  else if (event.key === "End") index = timestamps.length - 1;
+  else index += event.key === "ArrowLeft" ? -1 : 1;
+  showChartTooltip(
+    timestamps[Math.max(0, Math.min(timestamps.length - 1, index))],
+    true,
+  );
+});
+document.addEventListener("pointerdown", (event) => {
+  if (!event.target.closest("#chart")) hideChartTooltip();
 });
 document.addEventListener("click", (event) => {
   const collapse = event.target.closest("[data-collapse]");

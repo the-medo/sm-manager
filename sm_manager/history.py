@@ -24,8 +24,15 @@ class History:
     def record(self, snapshot):
         timestamp = int(snapshot["timestamp"])
         system = snapshot["system"]
+        totals, codex = snapshot["totals"], snapshot["codex"]
         rows = [(timestamp, "host", system["cpu_percent"], system["memory_used"])]
-        rows.append((timestamp, "projects", snapshot["totals"]["cpu_percent"], snapshot["totals"]["memory_bytes"]))
+        rows.append((timestamp, "projects", totals["cpu_percent"], totals["memory_bytes"]))
+        rows.append((timestamp, "codex", codex["cpu_percent"], codex["memory_bytes"]))
+        # RSS and container working sets are estimates and may overlap. Never
+        # turn an over-attributed sample into negative system usage.
+        rows.append((timestamp, "other",
+                     max(0, system["cpu_percent"] - totals["cpu_percent"] - codex["cpu_percent"]),
+                     max(0, system["memory_used"] - totals["memory_bytes"] - codex["memory_bytes"])))
         for project in snapshot["projects"]:
             rows.append((timestamp, "project:" + project["id"], project["cpu_percent"], project["memory_bytes"]))
             for worktree in project["worktrees"]:

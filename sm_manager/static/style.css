@@ -370,9 +370,13 @@ select {
   font-size: 10px;
 }
 .chart {
-  height: 180px;
+  height: 300px;
   margin: 0 10px;
   position: relative;
+}
+.chart:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
 }
 .chart svg {
   display: block;
@@ -387,6 +391,69 @@ select {
 .chart-grid {
   stroke: #293340;
   stroke-dasharray: 2 4;
+}
+.chart-capacity line {
+  stroke: #748da8;
+  stroke-dasharray: 6 4;
+}
+.chart-capacity text {
+  fill: #a9c3de;
+}
+.chart-crosshair {
+  stroke: #aab5c4;
+  stroke-dasharray: 3 3;
+}
+.chart-tooltip {
+  position: absolute;
+  top: 32px;
+  z-index: 2;
+  width: 280px;
+  max-width: calc(100% - 8px);
+  max-height: calc(100% - 42px);
+  overflow-y: auto;
+  padding: 9px 10px;
+  border: 1px solid #41536a;
+  border-radius: 3px;
+  background: #101923f5;
+  box-shadow: 0 5px 18px #0007;
+  font: 10px/1.5 var(--mono);
+}
+.tooltip-heading {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 7px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+.tooltip-heading strong {
+  font-weight: 500;
+}
+.tooltip-heading span,
+.tooltip-note {
+  color: var(--muted);
+  font-size: 9px;
+}
+.tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 0;
+}
+.tooltip-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tooltip-row strong {
+  font-weight: 500;
+  white-space: nowrap;
+}
+.tooltip-note {
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+  margin-top: 7px;
 }
 .chart-placeholder {
   height: 100%;
@@ -444,7 +511,7 @@ select {
   border-top: 2px solid var(--series-color);
   flex-shrink: 0;
 }
-.legend-swatch.total {
+.legend-swatch.dashed {
   border-top-style: dashed;
 }
 .chart-footer {
@@ -1325,7 +1392,7 @@ dialog::backdrop {
     display: none;
   }
   .chart {
-    height: 170px;
+    height: 260px;
     margin: 0 5px;
   }
   .chart-toolbar {

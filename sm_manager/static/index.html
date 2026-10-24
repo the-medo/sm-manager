@@ -102,17 +102,27 @@
                 ><label class="sr-only" for="history-entity"
                   >History source</label
                 ><select id="history-entity">
-                  <option value="all">All — project comparison</option>
+                  <option value="all">All — resource comparison</option>
                   <option value="host">Whole machine</option>
                   <option value="projects">All projects · total</option>
+                  <option value="codex">Codex processes</option>
+                  <option value="other">System &amp; other</option>
                 </select>
               </div>
               <div
                 id="chart"
                 class="chart"
-                role="img"
+                role="group"
+                tabindex="0"
+                aria-roledescription="interactive chart"
+                aria-describedby="chart-instructions chart-tooltip"
                 aria-label="Resource history chart"
               ></div>
+              <p id="chart-instructions" class="sr-only">
+                Hover or tap to inspect a sample. Use the left and right arrow
+                keys to move between samples, Home and End for the first and
+                latest samples, and Escape to close the tooltip.
+              </p>
               <div
                 id="chart-legend"
                 class="chart-legend"
@@ -131,7 +141,8 @@
               </div>
               <div id="allocation"></div>
               <div class="allocation-note">
-                RSS + container working set. Shared pages may be counted twice.
+                RSS + container working set; shared pages may overlap. System
+                &amp; other is the remainder, including unassigned containers.
               </div>
             </article>
           </section>
