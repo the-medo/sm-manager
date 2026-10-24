@@ -659,10 +659,17 @@ select {
 }
 .project-totals {
   display: flex;
+  align-items: center;
   gap: 13px;
   font: 10px var(--mono);
   color: #bac9dc;
   white-space: nowrap;
+}
+.project-memory {
+  color: #9dceff;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.15;
 }
 .collapse-button {
   border: 0;
@@ -675,7 +682,7 @@ select {
 .tree-columns,
 .worktree-row {
   display: grid;
-  grid-template-columns: minmax(155px, 1fr) 120px 92px 76px 52px 12px;
+  grid-template-columns: minmax(155px, 1fr) 120px 92px 112px 52px 12px;
   align-items: center;
   gap: 10px;
 }
@@ -751,6 +758,17 @@ select {
 }
 .row-cpu {
   color: var(--muted);
+}
+.row-memory {
+  color: #cbe4ff;
+  font-size: 16px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.tree-columns .memory-heading {
+  color: #9dceff;
+  font-size: 10px;
+  font-weight: 600;
 }
 .row-arrow {
   color: var(--muted);
@@ -1151,6 +1169,10 @@ dialog::backdrop {
   .project-meta {
     display: none;
   }
+  .tree-columns,
+  .worktree-row {
+    grid-template-columns: minmax(0, 1fr) 108px 80px 112px 44px 12px;
+  }
 }
 @media (max-width: 700px) {
   .sidebar {
@@ -1288,12 +1310,18 @@ dialog::backdrop {
   .project-totals > span:last-child {
     display: none;
   }
+  .project-memory {
+    font-size: 18px;
+  }
+  .row-memory {
+    font-size: 14px;
+  }
   .running-badge {
     font-size: 7px;
   }
   .tree-columns,
   .worktree-row {
-    grid-template-columns: minmax(115px, 1fr) 69px 43px 10px;
+    grid-template-columns: minmax(0, 1fr) 102px 43px 10px;
     gap: 7px;
     padding-left: 8px;
     padding-right: 8px;
