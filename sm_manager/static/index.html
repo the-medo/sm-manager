@@ -32,6 +32,9 @@
         <a href="#codex" data-view="codex" class="nav-link"
           ><span class="nav-icon" aria-hidden="true">✳</span> Codex</a
         >
+        <a href="#storage" data-view="storage" class="nav-link"
+          ><span class="nav-icon" aria-hidden="true">▥</span> Storage</a
+        >
       </nav>
       <div class="sidebar-bottom">
         <div class="machine">
@@ -69,6 +72,10 @@
           aria-label="Machine statistics"
         ></section>
         <div id="overview-content">
+          <section class="panel machine-health" aria-labelledby="health-title">
+            <div class="panel-heading"><h2 id="health-title">Machine health</h2><span class="subtle-tag" id="health-meta">Checking…</span></div>
+            <div id="machine-health" class="health-grid"></div>
+          </section>
           <section class="overview-grid">
             <article class="panel history-panel">
               <div class="panel-heading">
@@ -78,7 +85,8 @@
                   id="history-range"
                   aria-label="History range"
                 >
-                  <button data-hours="1" aria-pressed="false">1h</button
+                  <button data-hours="0.25" aria-pressed="false">15m</button
+                  ><button data-hours="1" aria-pressed="false">1h</button
                   ><button data-hours="6" aria-pressed="false">6h</button
                   ><button data-hours="24" class="selected" aria-pressed="true">
                     24h
@@ -99,6 +107,11 @@
                 </div>
                 <span id="history-subtitle" class="chart-unit"
                   >24h · memory</span
+                ><label class="sr-only" for="chart-scale">Chart scale</label
+                ><select id="chart-scale" aria-label="Chart scale">
+                  <option value="capacity">Full capacity</option>
+                  <option value="usage" selected>Zoom to usage</option>
+                </select
                 ><label class="sr-only" for="history-entity"
                   >History source</label
                 ><select id="history-entity">
@@ -146,6 +159,11 @@
               </div>
             </article>
           </section>
+          <section class="panel cleanup-candidates" aria-labelledby="cleanup-title">
+            <div class="panel-heading"><h2 id="cleanup-title">Cleanup candidates <span class="count-pill" id="cleanup-count">0</span></h2><button class="button" id="copy-candidates" disabled>Copy combined brief</button></div>
+            <div id="cleanup-candidates"></div>
+            <div class="allocation-note" id="cleanup-summary">Review low-activity apps before stopping them.</div>
+          </section>
         </div>
         <section id="project-section" class="project-section">
           <div class="section-heading">
@@ -181,6 +199,11 @@
         </section>
         <section id="containers-section" hidden></section>
         <section id="codex-section" hidden></section>
+        <section id="storage-section" hidden>
+          <div class="section-heading"><h2>Disk usage by project</h2><span class="subtle-tag">ON DEMAND</span></div>
+          <p class="inline-note">Scan a project to measure its worktrees, dependencies, build caches, and associated Docker storage. Results are cached; nothing is deleted.</p>
+          <div id="storage-projects"></div>
+        </section>
         <section id="host-section" class="host-section">
           <div class="section-heading">
             <h2>Host processes</h2>

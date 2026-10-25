@@ -30,6 +30,7 @@ const state = {
   history: null,
   hours: 24,
   metric: "memory_bytes",
+  scale: "usage",
   entity: "all",
   view: "overview",
   collapsed: new Set(),
@@ -42,12 +43,17 @@ const state = {
   chart: null,
   chartCursor: null,
   online: true,
+  cleanupSelected: new Set(),
+  storage: null,
+  storageLoading: false,
+  storageError: null,
 };
 const views = {
   overview: "Overview",
   projects: "Projects",
   containers: "Containers",
   codex: "Codex",
+  storage: "Storage",
 };
 
 function projectColor(id) {
@@ -161,6 +167,9 @@ function renderMetrics() {
         : 0,
     );
 }
+function allocationRow(label, value, maximum, color, formatted, entity) {
+  return `<div class="allocation-row"${entity ? ` data-tooltip-series="${e(entity)}"` : ""}><div class="allocation-label"><span class="allocation-color" style="background:${color}"></span><strong title="${e(label)}">${e(label)}</strong><span>${formatted}</span></div><div class="allocation-track"><span style="background:${color};width:${((value ?? 0) / maximum) * 100}%"></span></div></div>`;
+}
 function renderAllocation() {
   const { projects, totals, codex, system } = state.snapshot;
   const visible = projects.filter((p) => p.memory_bytes > 0).slice(0, 6);
@@ -183,12 +192,77 @@ function renderAllocation() {
     ? visible
         .map(
           (p) =>
-            `<div class="allocation-row"><div class="allocation-label"><span class="allocation-color" style="background:${p.id ? projectColor(p.id) : p.color}"></span><strong>${e(p.name)}</strong><span>${bytes(p.memory_bytes)}</span></div><div class="allocation-track"><span style="background:${p.id ? projectColor(p.id) : p.color};width:${(p.memory_bytes / maximum) * 100}%"></span></div></div>`,
+            allocationRow(
+              p.name,
+              p.memory_bytes,
+              maximum,
+              p.id ? projectColor(p.id) : p.color,
+              bytes(p.memory_bytes),
+            ),
         )
         .join("")
     : '<p class="inline-note">No running project processes.</p>';
   $("allocation").title =
     `${bytes(totals.memory_bytes)} attributed to projects. Estimates may include shared memory more than once.`;
+}
+function duration(seconds) {
+  if (seconds === null || seconds === undefined) return "—";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+  return `${Math.floor(seconds / 86400)}d ${Math.floor((seconds % 86400) / 3600)}h`;
+}
+function renderHealth() {
+  const health = state.snapshot.machine_health;
+  $("health-meta").textContent = `Up ${duration(state.snapshot.system.uptime_seconds)} · checks every minute`;
+  $("machine-health").innerHTML = health
+    ? health.checks.map((check) => `<div class="health-check health-${e(check.status)}" title="${e(check.detail)}"><div class="health-label"><span class="health-dot" aria-hidden="true"></span>${e(check.label)}<span class="sr-only"> · ${e(check.status)}</span></div><strong>${e(check.value)}</strong><span class="health-detail">${e(check.detail)}</span></div>`).join("")
+    : '<p class="inline-note">Health checks are unavailable. Resource monitoring continues.</p>';
+}
+function renderCandidates() {
+  const candidates = state.snapshot.cleanup_candidates || [];
+  const available = new Set(candidates.map((candidate) => candidate.worktree_id));
+  for (const id of state.cleanupSelected) if (!available.has(id)) state.cleanupSelected.delete(id);
+  $("cleanup-count").textContent = candidates.length;
+  const html = candidates.length
+    ? `<div class="table-scroll"><table class="compact-table candidate-table"><thead><tr><th scope="col">Select</th><th scope="col">Project / worktree</th><th scope="col">Memory</th><th scope="col">Avg CPU</th><th scope="col">Observed</th></tr></thead><tbody>${candidates.map((candidate) => `<tr><td><input type="checkbox" data-cleanup-select="${e(candidate.worktree_id)}" aria-label="Select ${e(candidate.project_name)} ${e(candidate.branch)}" ${state.cleanupSelected.has(candidate.worktree_id) ? "checked" : ""}></td><td><button class="text-button" data-inspect-worktree="${e(candidate.worktree_id)}">${e(candidate.project_name)} / ${e(candidate.branch)}</button></td><td>${bytes(candidate.memory_bytes)}</td><td>${percent(candidate.cpu_average)}</td><td>${duration(candidate.observed_seconds)}</td></tr>`).join("")}</tbody></table></div>`
+    : '<p class="section-note">No candidates right now. Apps need at least 15 minutes of sufficiently continuous samples with low CPU use and no recent Codex metadata updates. The monitor is excluded.</p>';
+  if ($("cleanup-candidates").innerHTML !== html) {
+    const focused = document.activeElement?.dataset.cleanupSelect;
+    $("cleanup-candidates").innerHTML = html;
+    if (focused) [...$("cleanup-candidates").querySelectorAll("[data-cleanup-select]")]
+      .find((input) => input.dataset.cleanupSelect === focused)?.focus({preventScroll: true});
+  }
+  const selected = candidates.filter((candidate) => state.cleanupSelected.has(candidate.worktree_id));
+  $("copy-candidates").disabled = !selected.length;
+  $("cleanup-summary").textContent = `${selected.length} selected · ${bytes(selected.reduce((total, candidate) => total + candidate.memory_bytes, 0))} estimated memory · Low CPU does not mean safe to stop. The brief asks Codex to verify ownership and preserve source, databases, and volumes.`;
+}
+function renderStorage() {
+  if (!state.snapshot) return;
+  const cached = state.storage?.projects || {};
+  const projects = [...state.snapshot.projects].sort((a, b) => (cached[b.id]?.bytes || 0) - (cached[a.id]?.bytes || 0) || a.name.localeCompare(b.name));
+  $("storage-projects").innerHTML = `${state.storageError ? `<div class="warning">${e(state.storageError)}</div>` : ""}${projects.map((project) => {
+    const usage = cached[project.id];
+    const scanning = state.storage?.scanning === project.id;
+    const docker = usage?.docker;
+    return `<article class="panel storage-project"><div class="panel-heading"><div><h2>${e(project.name)}</h2><span class="storage-meta">${usage ? `${bytes(usage.bytes)} on disk · scanned ${e(ago(usage.scanned_at))}${usage.partial ? ' · partial scan' : ''}` : `${project.worktrees.length} worktrees · not scanned`}</span></div><button class="button" data-scan-project="${e(project.id)}" ${state.storageLoading || state.storage?.scanning ? "disabled" : ""}>${scanning ? "Scanning…" : usage ? "Rescan" : "Scan project"}</button></div>${usage ? `${usage.error ? `<p class="section-note">${e(usage.error)}</p>` : ""}<div class="table-scroll"><table class="compact-table storage-table"><thead><tr><th scope="col">Worktree / branch</th><th scope="col">Disk total</th><th scope="col">Dependencies</th><th scope="col">Build / cache</th><th scope="col">Git</th><th scope="col">Other</th></tr></thead><tbody>${usage.worktrees.map((worktree) => `<tr><td title="${e(worktree.path)}"><button class="text-button" data-inspect-worktree="${e(worktree.worktree_id)}">${e(worktree.branch)}</button>${worktree.partial ? `<span class="storage-partial" title="${e(worktree.notes.join('; '))}"> partial</span>` : ""}</td><td>${bytes(worktree.bytes)}</td>${["dependencies", "build_cache", "git", "other"].map((category) => `<td>${bytes(worktree.categories[category])}</td>`).join("")}</tr>`).join("")}</tbody></table></div><div class="storage-docker">${docker?.available ? `<span>Docker · ${docker.container_count} containers, including stopped</span><span>Writable layers <strong>${bytes(docker.writable_bytes)}</strong></span><span>Images <strong>${bytes(docker.image_bytes)}</strong>${docker.shared_images ? " · shared" : ""}</span><span>Volumes <strong>${bytes(docker.volume_bytes)}</strong>${docker.shared_volumes ? " · shared" : ""}</span>${docker.partial ? '<span class="storage-partial">Some Docker sizes unavailable</span>' : ""}` : `<span>${e(docker?.status || "Docker disk accounting unavailable")}</span>`}</div><div class="allocation-note">Allocated filesystem blocks; links are not followed, hard links are counted once per project, nested worktrees are counted separately. Docker image and volume sizes are associated storage, may overlap across projects, and are not included in the disk total.${usage.partial ? " Partial totals are lower bounds; hover partial labels for details." : ""}</div>` : scanning ? '<p class="section-note">Measuring directory sizes in the background. Other monitoring continues.</p>' : ""}</article>`;
+  }).join("") || '<div class="empty">No projects discovered yet.</div>'}`;
+}
+async function loadStorage(projectId = null) {
+  if (state.storageLoading) return;
+  clearTimeout(loadStorage.timer);
+  state.storageLoading = true;
+  renderStorage();
+  try {
+    state.storage = await api(`/api/disk-usage${projectId ? `?scan=1&project=${encodeURIComponent(projectId)}` : ""}`);
+    state.storageError = null;
+  } catch (error) {
+    state.storageError = error.message;
+  } finally {
+    state.storageLoading = false;
+    renderStorage();
+    renderProjects();
+    if (state.storage?.scanning || state.storageError) loadStorage.timer = setTimeout(() => loadStorage(), state.storageError ? 10000 : 2000);
+  }
 }
 function matchingProjects() {
   const query = $("search").value.toLowerCase().trim();
@@ -220,7 +294,7 @@ function renderProjects() {
     ? projects
         .map((p) => {
           const collapsed = state.collapsed.has(p.id);
-          return `<article class="project-card"><div class="project-heading"><div class="project-identity"><div class="project-title">${e(p.name)}<span class="running-badge ${p.running_worktrees ? "" : "idle"}">${p.running_worktrees ? '<span class="status-dot"></span> Running' : "Idle"}</span></div><div class="project-meta">${p.worktrees.length} wt · ${p.process_count} proc · ${p.container_count} ctr</div></div><div class="project-totals numeric"><span class="project-memory" title="Project memory">${bytes(p.memory_bytes)}</span><span title="Project CPU">${percent(p.cpu_percent)}</span></div><button class="collapse-button" data-collapse="${e(p.id)}" aria-expanded="${!collapsed}" aria-controls="tree-${e(p.id)}" aria-label="${collapsed ? "Expand" : "Collapse"} ${e(p.name)}">${collapsed ? "+" : "−"}</button></div><div id="tree-${e(p.id)}" ${collapsed ? "hidden" : ""}><div class="tree-columns"><span>Worktree / branch</span><span class="services-heading">Proc / containers</span><span class="ports-heading">Ports</span><span class="align-right memory-heading">Memory</span><span class="align-right">CPU</span><span></span></div>${p.worktrees.map((w) => `<div class="worktree-row" data-worktree="${e(w.id)}" role="button" tabindex="0" aria-label="Inspect ${e(p.name)} ${e(w.branch)}"><div class="worktree-name"><span class="branch-icon" aria-hidden="true">⑂</span><div class="branch-label"><span class="branch-title" title="${e(w.path)}">${e(w.branch)}</span><span class="branch-info">${w.is_main ? "[main]" : ""}${w.codex_managed ? '<span class="codex-marker" title="Codex worktree">✳</span>' : ""}</span></div></div><span class="service-summary">${w.running ? `${w.processes.length} proc / ${w.containers.length} ctr` : "Idle"}</span><span class="row-ports" title="${e(w.ports.join(", "))}">${w.ports.length ? e(w.ports.join(", ")) : "—"}</span><span class="row-memory">${w.running ? bytes(w.memory_bytes) : "—"}</span><span class="row-cpu">${w.running ? percent(w.cpu_percent) : "—"}</span><span class="row-arrow" aria-hidden="true">↗</span></div>`).join("")}</div></article>`;
+          return `<article class="project-card"><div class="project-heading"><div class="project-identity"><div class="project-title">${e(p.name)}<span class="running-badge ${p.running_worktrees ? "" : "idle"}">${p.running_worktrees ? '<span class="status-dot"></span> Running' : "Idle"}</span></div><div class="project-meta">${p.worktrees.length} wt · ${p.process_count} proc · ${p.container_count} ctr${state.storage?.projects[p.id] ? ` · ${bytes(state.storage.projects[p.id].bytes)} disk` : ""}</div></div><div class="project-totals numeric"><span class="project-memory" title="Project memory">${bytes(p.memory_bytes)}</span><span title="Project CPU">${percent(p.cpu_percent)}</span></div><button class="collapse-button" data-collapse="${e(p.id)}" aria-expanded="${!collapsed}" aria-controls="tree-${e(p.id)}" aria-label="${collapsed ? "Expand" : "Collapse"} ${e(p.name)}">${collapsed ? "+" : "−"}</button></div><div id="tree-${e(p.id)}" ${collapsed ? "hidden" : ""}><div class="tree-columns"><span>Worktree / branch</span><span class="services-heading">Proc / containers</span><span class="ports-heading">Ports</span><span class="align-right memory-heading">Memory</span><span class="align-right">CPU</span><span></span></div>${p.worktrees.map((w) => `<div class="worktree-row" data-worktree="${e(w.id)}" role="button" tabindex="0" aria-label="Inspect ${e(p.name)} ${e(w.branch)}"><div class="worktree-name"><span class="branch-icon" aria-hidden="true">⑂</span><div class="branch-label"><span class="branch-title" title="${e(w.path)}">${e(w.branch)}</span><span class="branch-info">${w.is_main ? "[main]" : ""}${w.codex_managed ? '<span class="codex-marker" title="Codex worktree">✳</span>' : ""}</span></div></div><span class="service-summary">${w.running ? `${w.processes.length} proc / ${w.containers.length} ctr` : "Idle"}</span><span class="row-ports" title="${e(w.ports.join(", "))}">${w.ports.length ? e(w.ports.join(", ")) : "—"}</span><span class="row-memory">${w.running ? bytes(w.memory_bytes) : "—"}</span><span class="row-cpu">${w.running ? percent(w.cpu_percent) : "—"}</span><span class="row-arrow" aria-hidden="true">↗</span></div>`).join("")}</div></article>`;
         })
         .join("")
     : `<div class="empty">${$("search").value ? "No projects match your search." : "No running projects."}<p>${$("running-only").checked ? "Turn off “Running only” to view idle worktrees." : "Add project directories in the local configuration."}</p></div>`;
@@ -276,8 +350,10 @@ function setView() {
   $("project-section").hidden = !["overview", "projects"].includes(state.view);
   $("containers-section").hidden = state.view !== "containers";
   $("codex-section").hidden = state.view !== "codex";
+  $("storage-section").hidden = state.view !== "storage";
   $("host-section").hidden = state.view !== "overview";
   $("metrics").hidden = state.view === "codex";
+  if (state.view === "storage" && state.snapshot) loadStorage();
 }
 function historySources() {
   const projects = [...(state.snapshot?.projects || [])].sort((a, b) =>
@@ -344,7 +420,7 @@ function renderChart() {
     data && data.entity === state.entity && data.hours === state.hours;
   const isMemory = state.metric === "memory_bytes";
   $("history-subtitle").textContent =
-    `${state.hours}h · ${isMemory ? "memory" : "machine CPU %"}`;
+    `${state.hours === 0.25 ? "15m" : `${state.hours}h`} · ${isMemory ? "memory" : "machine CPU %"}`;
   if (!current) {
     $("chart").innerHTML =
       `<div class="chart-placeholder">${state.historyError ? "History unavailable. Retrying…" : "Loading history…"}</div>`;
@@ -406,7 +482,7 @@ function renderChart() {
   const end = data.asOf;
   const start = end - data.hours * 3600;
   const width = Math.max(250, $("chart").clientWidth);
-  const height = $("chart").clientHeight || 300;
+  const height = $("chart").clientHeight || 600;
   const left = 52,
     right = 10,
     top = 25,
@@ -425,8 +501,8 @@ function renderChart() {
       ? 0.5
       : 5;
   const capacity = isMemory ? state.snapshot.system.memory_total : 0;
-  const ceiling = capacity
-    ? Math.max(capacity, ...points.map((point) => point[state.metric]))
+  const ceiling = state.scale === "capacity"
+    ? Math.max(isMemory ? capacity : 100, ...points.map((point) => point[state.metric]))
     : Math.ceil(max / step) * step;
   const x = (timestamp) =>
     left +
@@ -444,9 +520,9 @@ function renderChart() {
         `<line class="chart-grid" x1="${left}" x2="${width - right}" y1="${y(ceiling * r)}" y2="${y(ceiling * r)}"/><text x="${left - 8}" y="${y(ceiling * r) + 3}" text-anchor="end">${axisValue(ceiling * r)}</text>`,
     )
     .join("");
-  const capacityLine = capacity
+  const capacityLine = capacity && capacity <= ceiling
     ? `<g class="chart-capacity"><line x1="${left}" x2="${width - right}" y1="${y(capacity)}" y2="${y(capacity)}"/><text x="${width - right}" y="${y(capacity) - 9}" text-anchor="end">${bytes(capacity)} total capacity</text></g>`
-    : "";
+    : capacity ? `<g class="chart-capacity"><text x="${width - right}" y="${top - 9}" text-anchor="end">${bytes(capacity)} total capacity · zoom to usage</text></g>` : "";
   const ticks = width < 450 ? [0, 0.5, 1] : [0, 0.25, 0.5, 0.75, 1];
   const labels = ticks
     .map(
@@ -501,6 +577,7 @@ function renderChart() {
     top,
     graphH,
     capacity,
+    ceiling,
     timestamps: [...new Set(points.map((point) => point.timestamp))].sort(
       (a, b) => a - b,
     ),
@@ -521,25 +598,33 @@ function showChartTooltip(timestamp, announce = false) {
   const tooltip = $("chart-tooltip");
   if (state.chartCursor === nearest && !tooltip.hidden) return;
   state.chartCursor = nearest;
-  const values = chart.visible.map((series) => ({
-    ...series,
-    point: series.history.points.find((point) => point.timestamp === nearest),
-  }));
+  const values = chart.visible
+    .map((series) => ({
+      ...series,
+      point: series.history.points.find((point) => point.timestamp === nearest),
+    }))
+    .filter((series) => series.point?.[state.metric] !== 0);
+  const maximum = Math.max(
+    1,
+    ...values.map((series) => series.point?.[state.metric] ?? 0),
+  );
   const bucket = chart.visible[0].history.bucket_seconds;
   const time = new Date(nearest * 1000).toLocaleString([], {
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    ...(bucket < 60 ? {second: "2-digit"} : {}),
     hour12: false,
   });
   const until = new Date((nearest + bucket) * 1000).toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
+    ...(bucket < 60 ? {second: "2-digit"} : {}),
     hour12: false,
   });
   tooltip.setAttribute("aria-live", announce ? "polite" : "off");
-  tooltip.innerHTML = `<div class="tooltip-heading"><strong>${e(time)}–${e(until)}</strong><span>Bucket averages</span></div>${values.map((series) => `<div class="tooltip-row" data-tooltip-series="${e(series.entity)}"><span class="legend-swatch ${series.dash ? "dashed" : ""}" style="--series-color:${series.color}"></span><span class="tooltip-name" title="${e(series.label)}">${e(series.label)}</span><strong>${series.point ? chart.format(series.point[state.metric]) : "—"}</strong></div>`).join("")}<div class="tooltip-note">${chart.capacity ? `${bytes(chart.capacity)} total capacity · ` : ""}— = no sample</div>`;
+  tooltip.innerHTML = `<div class="tooltip-heading"><strong>${e(time)}–${e(until)}</strong><span>Bucket averages</span></div>${values.length ? values.map((series) => allocationRow(series.label, series.point?.[state.metric], maximum, series.color, chart.format(series.point?.[state.metric]), series.entity)).join("") : '<p class="inline-note">No usage in this sample.</p>'}<div class="tooltip-note">${chart.capacity ? `${bytes(chart.capacity)} total capacity · ` : ""}— = no sample</div>`;
   tooltip.hidden = false;
   const cursorX = chart.x(nearest);
   const tooltipX =
@@ -645,11 +730,15 @@ function render() {
     .sort((a, b) => a.name.localeCompare(b.name))
     .forEach((project) => projectColor(project.id));
   renderMetrics();
+  renderHealth();
+  renderCandidates();
   renderAllocation();
   renderProjects();
   renderHost();
   renderContainers();
   renderCodex();
+  renderStorage();
+  if (!state.storage) loadStorage();
   const options =
     '<option value="all">All — resource comparison</option><option value="host">Whole machine</option><option value="projects">All projects · total</option><option value="codex">Codex processes</option><option value="other">System &amp; other</option>' +
     s.projects
@@ -725,6 +814,33 @@ $("chart-tabs").addEventListener("click", (event) => {
   });
   renderChart();
 });
+$("chart-scale").addEventListener("change", (event) => {
+  state.scale = event.target.value;
+  renderChart();
+});
+$("cleanup-candidates").addEventListener("change", (event) => {
+  const id = event.target.dataset.cleanupSelect;
+  if (!id) return;
+  event.target.checked ? state.cleanupSelected.add(id) : state.cleanupSelected.delete(id);
+  renderCandidates();
+});
+$("copy-candidates").addEventListener("click", async () => {
+  const ids = [...state.cleanupSelected];
+  if (!ids.length) return;
+  $("copy-candidates").disabled = true;
+  try {
+    const fresh = await api("/api/snapshot");
+    if (fresh.stale) throw new Error("The latest sample is stale. Wait for monitoring to recover.");
+    const available = new Set((fresh.cleanup_candidates || []).map((candidate) => candidate.worktree_id));
+    if (ids.some((id) => !available.has(id))) throw new Error("The shortlist changed. Review the latest candidates before copying.");
+    const plans = await Promise.all(ids.map((id) => api(`/api/cleanup-plan/${encodeURIComponent(id)}`)));
+    await copy(`Review these ${plans.length} worktrees individually before cleaning up their running apps. Re-read each current plan and follow each target repository's AGENTS.md. Preserve source, worktrees, databases, volumes, and unrelated services. Low CPU use is only a review hint.\nMonitor: ${location.origin}\n\n${plans.map((plan) => `${plan.prompt}\nResource inventory (revalidate before acting):\n${JSON.stringify(plan.resources, null, 2)}\nLifecycle launchers to review: ${plan.launchers_to_review.join(", ") || "Check repository documentation"}`).join("\n\n---\n\n")}`, "Combined cleanup brief copied.");
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    renderCandidates();
+  }
+});
 $("history-entity").addEventListener("change", (event) => {
   state.entity = event.target.value;
   state.hiddenSeries.clear();
@@ -778,6 +894,10 @@ document.addEventListener("pointerdown", (event) => {
   if (!event.target.closest("#chart")) hideChartTooltip();
 });
 document.addEventListener("click", (event) => {
+  const scan = event.target.closest("[data-scan-project]");
+  if (scan) loadStorage(scan.dataset.scanProject);
+  const inspect = event.target.closest("[data-inspect-worktree]");
+  if (inspect) openDetail(inspect.dataset.inspectWorktree);
   const collapse = event.target.closest("[data-collapse]");
   if (collapse) {
     const id = collapse.dataset.collapse;

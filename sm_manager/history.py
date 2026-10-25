@@ -45,7 +45,7 @@ class History:
 
     def query(self, entity="host", hours=24, now=None):
         now = now or time.time()
-        hours = max(1, min(24, hours))
+        hours = max(0.25, min(24, hours))
         bucket = max(10, int(hours * 3600 / 180))
         with self.lock:
             rows = self.db.execute("""SELECT CAST(timestamp / ? AS INTEGER) * ?, AVG(cpu), AVG(memory), MAX(cpu), MAX(memory)
@@ -55,6 +55,14 @@ class History:
             first = self.db.execute("SELECT MIN(timestamp) FROM samples WHERE entity=? AND timestamp>=?", (entity, now - RETENTION)).fetchone()[0]
         return {"entity": entity, "hours": hours, "bucket_seconds": bucket, "started_at": first,
                 "points": [{"timestamp": r[0], "cpu_percent": r[1], "memory_bytes": r[2], "cpu_peak": r[3], "memory_peak": r[4]} for r in rows]}
+
+    def worktree_activity(self, now=None):
+        now = now or time.time()
+        with self.lock:
+            rows = self.db.execute("""SELECT entity, MIN(timestamp), MAX(timestamp), COUNT(*), AVG(cpu), MAX(cpu)
+                FROM samples WHERE entity LIKE 'worktree:%' AND timestamp>=? AND timestamp<=? GROUP BY entity""",
+                (now - 1800, now)).fetchall()
+        return {row[0][9:]: {"first": row[1], "last": row[2], "samples": row[3], "cpu_average": row[4], "cpu_peak": row[5]} for row in rows}
 
     def close(self):
         with self.lock:

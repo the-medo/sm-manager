@@ -180,7 +180,7 @@ class AttributionTests(unittest.TestCase):
             container = {"id": "abc", "name": "db", "memory_bytes": 200, "cpu_percent": 2, "ports": [], "stats_available": True,
                          "raw": {"Id": "abc", "Names": ["/db"], "Labels": {"sm-manager.worktree": w["path"]}}}
             collector.docker.available = True
-            with patch.object(collector.processes, "sample", return_value=(processes, {"memory_used": 2000, "cpu_percent": 8})), patch.object(collector.docker, "sample", return_value=[container]):
+            with patch.object(collector.processes, "sample", return_value=(processes, {"memory_used": 2000, "cpu_percent": 8})), patch.object(collector.docker, "sample", return_value=[container]), patch.object(collector.machine_health, "sample", return_value={"checks": []}):
                 result = collector.sample()
             self.assertEqual(result["totals"]["memory_bytes"], 350)
             self.assertEqual(result["codex"]["memory_bytes"], 80)

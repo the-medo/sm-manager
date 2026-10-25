@@ -58,13 +58,24 @@ def handler_for(collector, config):
                 if url.path == "/api/history":
                     query = parse_qs(url.query)
                     try:
-                        hours = int(query.get("hours", ["24"])[0])
+                        hours = float(query.get("hours", ["24"])[0])
                         entity = query.get("entity", ["host"])[0]
-                        if len(entity) > 100 or not 1 <= hours <= 24:
+                        if len(entity) > 100 or not 0.25 <= hours <= 24:
                             raise ValueError()
                     except ValueError:
-                        return self.respond(400, {"error": "Use hours=1..24 and a valid entity"})
+                        return self.respond(400, {"error": "Use hours=0.25..24 and a valid entity"})
                     return self.respond(200, collector.history.query(entity, hours))
+                if url.path == "/api/disk-usage":
+                    query = parse_qs(url.query)
+                    project_ids = {project["id"] for project in snapshot["projects"]}
+                    if query.get("scan") == ["1"]:
+                        project_id = query.get("project", [""])[0]
+                        if project_id not in project_ids:
+                            return self.respond(404, {"error": "Project not found"})
+                        if not collector.disk_usage.start(snapshot["projects"], project_id):
+                            return self.respond(409, {"error": "Another project scan is in progress"})
+                        return self.respond(202, collector.disk_usage.status(project_ids))
+                    return self.respond(200, collector.disk_usage.status(project_ids))
                 if url.path.startswith("/api/cleanup-plan/"):
                     plan = cleanup_plan(snapshot, url.path.rsplit("/", 1)[-1])
                     return self.respond(200 if plan else 404, plan or {"error": "Worktree not found"})

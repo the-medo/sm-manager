@@ -17,6 +17,12 @@ agent to inspect the host every time.
 - Discovers Codex worktrees and shows local thread recency and runtime overhead.
 - Links to apps that already have a private Tailscale Serve route.
 - Copies a cleanup brief with exact resource identities for an agent to review.
+- Checks Docker, private Tailscale access, sleep protection, free disk space,
+  memory pressure, and observed operating-system version changes.
+- Lists sustained low-CPU worktrees for cleanup review and copies a combined
+  brief for selected candidates.
+- Scans project disk usage on demand, including dependencies, build caches,
+  Git metadata, and associated Docker storage, including stopped containers.
 
 The dashboard is read only. It doesn't stop processes, remove worktrees, delete
 volumes, or run repository scripts. Cleanup briefs are a handoff to your agent.
@@ -153,6 +159,42 @@ or macOS collectors are not supported in this first version.
   most about 180 time buckets (the API also includes peaks). Samples older than
   24 hours are pruned each minute. Gaps indicate the monitor was not collecting.
   SQLite reuses freed pages; the database file need not shrink after pruning.
+- **Chart scale:** Zoom to usage is the default and scales to the visible series
+  with headroom. Full capacity shows all installed RAM (or 100% machine CPU).
+  Memory capacity remains labelled in both modes. The 15m, 1h, 6h, and 24h
+  ranges are available.
+
+## Machine health, cleanup candidates, and storage
+
+Machine health checks refresh once a minute. Always-on protection is confirmed
+when all four systemd suspend/hibernation services are masked; an unverified
+state asks you to check the machine's settings. The panel never changes them.
+Memory pressure measures time tasks spend stalled on memory, rather than how
+much RAM is allocated. OS version/build baselines are stored locally; an observed
+change is highlighted for 24 hours. No earlier OS history is reconstructed.
+
+Cleanup candidates must currently use at least 64 MiB and have at least 15
+minutes of observation in the last 30 minutes, with at least 80% sample coverage.
+Average CPU must be at most 0.5% of the whole machine, with no sampled CPU peak
+above 1%. Recent Codex metadata updates, unavailable container stats, and the
+monitor's own worktree exclude an app. Low CPU does not establish that a service
+is unused or safe to stop. Selecting candidates only copies a combined brief;
+each worktree's current resources and lifecycle instructions must be revalidated.
+
+Open **Storage** and choose **Scan project**. A single background scan runs at a
+time. Scans count allocated filesystem blocks, never follow symlinks, skip mounted
+filesystems, and count hard links once per project. Nested discovered worktrees
+are counted separately. The filesystem phase is limited to 30 seconds per
+worktree and 120 seconds / 500,000 entries per project; partial results are marked as lower bounds. Results
+are cached locally across monitor restarts and include their scan time.
+
+Docker storage uses GET requests for all containers and disk usage. Ownership is
+resolved using the same labels, explicit mappings, and mounts as the resource
+monitor. Associated image and named-volume sizes may overlap between projects;
+shared use is labelled, and these sizes are not added to worktree disk totals.
+Docker size accounting runs only for projects with owned containers, with a
+separate 45-second timeout; an unavailable result does not discard filesystem totals.
+Neither scanning nor copying a cleanup brief deletes anything.
 
 Some process working directories may be unreadable due to OS permissions. Those
 processes appear outside projects. CPU/RSS collection does not require root.
@@ -173,6 +215,11 @@ Same-origin, read-only HTTP endpoints:
 | `GET /api/snapshot` | Projects, worktrees, processes, containers, Codex, host |
 | `GET /api/history?hours=24&entity=host` | Time-bucketed CPU and memory |
 | `GET /api/cleanup-plan/<worktree-id>` | Resource identities and a cleanup brief |
+| `GET /api/disk-usage` | Cached per-project scan results and current scan status |
+| `GET /api/disk-usage?scan=1&project=<project-id>` | Start a bounded read-only background scan; returns 202, or 409 if another project is scanning |
+
+History accepts `hours=0.25..24`. Snapshot fields `machine_health` and
+`cleanup_candidates` contain health checks and the current review shortlist.
 
 History entities are `host`, `projects`, `project:<id>`, or `worktree:<id>`.
 IDs are stable hashes of the local Git common directory or worktree path.

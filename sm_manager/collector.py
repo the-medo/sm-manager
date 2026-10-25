@@ -1,11 +1,14 @@
 import copy
 import logging
+import os
 import threading
 import time
 from pathlib import Path
 
 from .discovery import Discovery
 from .history import History
+from .health import MachineHealth
+from .storage import DiskUsage
 from .metrics import Docker, Processes, private_urls
 
 LOG = logging.getLogger(__name__)
@@ -23,6 +26,12 @@ class Collector:
         self.processes = Processes()
         self.docker = Docker(config["docker_socket"])
         self.history = History(config["data_dir"])
+        self.machine_health = MachineHealth(config["data_dir"])
+        self.disk_usage = DiskUsage(config)
+        self.health = None
+        self.last_health = 0
+        self.activity = {}
+        self.last_activity = 0
         self.lock = threading.Lock()
         self.stop_event = threading.Event()
         self.snapshot = None
@@ -129,6 +138,18 @@ class Collector:
                   "docker": {"available": self.docker.available, "status": self.docker.status},
                   "warnings": warnings, "collection_ms": round((time.monotonic() - started) * 1000)}
         self.history.record(result)
+        if started - self.last_health >= 60 or self.health is None:
+            try:
+                self.health = self.machine_health.sample(system, self.docker, self.config)
+            except Exception:
+                LOG.exception("Machine health check failed")
+            self.last_health = started
+        result["machine_health"] = self.health
+        if started - self.last_activity >= 60 or not self.activity:
+            self.activity = self.history.worktree_activity(now)
+            self.last_activity = started
+        result["cleanup_candidates"] = cleanup_candidates(result, self.activity, self.config["interval"])
+        result["collection_ms"] = round((time.monotonic() - started) * 1000)
         with self.lock:
             self.snapshot = result
             self.error = None
@@ -172,3 +193,31 @@ def cleanup_plan(snapshot, worktree_id):
     return {"read_only": True, "generated_at": snapshot["timestamp"], "worktree_id": worktree_id,
             "path": worktree["path"], "branch": worktree["branch"], "launchers_to_review": launchers,
             "resources": resources_to_review, "prompt": prompt}
+
+
+def cleanup_candidates(snapshot, activity, interval):
+    """A review shortlist, never a claim that an app is safe to stop."""
+    now = snapshot["timestamp"]
+    candidates = []
+    for project in snapshot["projects"]:
+        for worktree in project["worktrees"]:
+            stats = activity.get(worktree["id"])
+            if not worktree["running"] or worktree["memory_bytes"] < 64 * 2**20 or not stats:
+                continue
+            if any(process["pid"] == os.getpid() for process in worktree["processes"]):
+                continue
+            span = stats["last"] - stats["first"]
+            expected = span / interval + 1
+            if span < 900 or now - stats["last"] > max(90, interval * 3) or stats["samples"] < expected * 0.8:
+                continue
+            if stats["cpu_average"] > 0.5 or stats["cpu_peak"] > 1 or worktree["cpu_percent"] > 1:
+                continue
+            if (worktree["last_codex_activity"] or 0) > now - 1800:
+                continue
+            if any(not container.get("stats_available", False) for container in worktree["containers"]):
+                continue
+            candidates.append({"worktree_id": worktree["id"], "project_name": project["name"],
+                               "branch": worktree["branch"], "path": worktree["path"],
+                               "memory_bytes": worktree["memory_bytes"], "cpu_percent": worktree["cpu_percent"],
+                               "observed_seconds": span, "cpu_average": stats["cpu_average"], "cpu_peak": stats["cpu_peak"]})
+    return sorted(candidates, key=lambda candidate: -candidate["memory_bytes"])

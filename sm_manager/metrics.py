@@ -123,8 +123,9 @@ class Docker:
         self.status = "Waiting for Docker"
         self.available = False
 
-    def get(self, path):
+    def get(self, path, timeout=3):
         connection = UnixConnection(self.path)
+        connection.timeout = timeout
         try:
             connection.request("GET", path)
             response = connection.getresponse()
