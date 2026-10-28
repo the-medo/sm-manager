@@ -7,6 +7,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from .collector import Collector, cleanup_plan
+from .history import RETENTION_HOURS
 
 STATIC = Path(__file__).parent / "static"
 
@@ -60,10 +61,10 @@ def handler_for(collector, config):
                     try:
                         hours = float(query.get("hours", ["24"])[0])
                         entity = query.get("entity", ["host"])[0]
-                        if len(entity) > 100 or not 0.25 <= hours <= 24:
+                        if len(entity) > 100 or not 0.25 <= hours <= RETENTION_HOURS:
                             raise ValueError()
                     except ValueError:
-                        return self.respond(400, {"error": "Use hours=0.25..24 and a valid entity"})
+                        return self.respond(400, {"error": f"Use hours=0.25..{RETENTION_HOURS} and a valid entity"})
                     return self.respond(200, collector.history.query(entity, hours))
                 if url.path == "/api/disk-usage":
                     query = parse_qs(url.query)

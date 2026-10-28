@@ -3,7 +3,7 @@
 ## Scope and architecture
 
 This is a local, read-only Linux resource monitor. Keep it lightweight: Python
-standard library backend, SQLite 24-hour history, buildless browser UI.
+standard library backend, SQLite 30-day history, buildless browser UI.
 
 - `sm_manager/discovery.py`: Git/Codex discovery and container ownership.
 - `sm_manager/metrics.py`: `/proc`, Docker GET requests, and private app URLs.

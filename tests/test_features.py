@@ -204,7 +204,7 @@ class StorageTests(unittest.TestCase):
 
 
 class FeatureAccessTests(unittest.TestCase):
-    def test_storage_and_fractional_history_keep_access_boundaries(self):
+    def test_storage_and_month_history_keep_access_boundaries(self):
         collector = Mock()
         collector.get_snapshot.return_value = {"stale": False, "timestamp": time.time(), "projects": [{"id": "known", "worktrees": []}]}
         collector.disk_usage.status.return_value = {"projects": {}, "scanning": None}
@@ -229,10 +229,21 @@ class FeatureAccessTests(unittest.TestCase):
             collector.disk_usage.start.return_value = False
             self.assertEqual(request("/api/disk-usage?scan=1&project=known")[0], 409)
             self.assertEqual(request("/api/disk-usage")[0], 200)
-            self.assertEqual(request("/api/history?hours=0.25")[0], 200)
-            collector.history.query.assert_called_with("host", 0.25)
-            for hours in ("0", "25", "nan", "inf", "bad"):
-                self.assertEqual(request("/api/history?hours=" + hours)[0], 400)
+            self.assertEqual(request("/api/history")[0], 200)
+            collector.history.query.assert_called_with("host", 24)
+            for hours in (0.25, 24, 25, 168, 720):
+                with self.subTest(hours=hours):
+                    self.assertEqual(request(f"/api/history?hours={hours}&entity=worktree:w")[0], 200)
+                    collector.history.query.assert_called_with("worktree:w", hours)
+            for hours in ("0", "0.24", "720.01", "721", "nan", "inf", "-inf", "bad"):
+                status, body = request("/api/history?hours=" + hours)
+                self.assertEqual(status, 400)
+                self.assertIn("0.25..720", json.loads(body)["error"])
+            self.assertEqual(request("/api/history?hours=720&entity=" + "x" * 101)[0], 400)
+            collector.history.query.reset_mock()
+            for headers in ({"Host": "evil.test"}, {"Origin": "https://evil.test"}, {"Sec-Fetch-Site": "cross-site"}):
+                self.assertEqual(request("/api/history?hours=720", headers)[0], 403)
+            collector.history.query.assert_not_called()
         finally:
             server.shutdown(); server.server_close(); thread.join()
 

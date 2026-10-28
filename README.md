@@ -10,7 +10,7 @@ agent to inspect the host every time.
 
 - Groups running processes and containers by Git repository and worktree.
 - Shows machine CPU, memory, swap, listening ports, and larger host processes.
-- Keeps a rolling 24 hours of machine, project, and worktree history in SQLite.
+- Keeps a rolling 30 days of machine, project, and worktree history in SQLite.
 - Compares all projects on one CPU or memory chart, with a dashed combined-total
   line and a clickable legend. Individual project, worktree, and whole-machine
   views remain available.
@@ -157,12 +157,16 @@ or macOS collectors are not supported in this first version.
   don't prevent resource collection.
 - **History:** samples every 10 seconds by default; chart points average into at
   most about 180 time buckets (the API also includes peaks). Samples older than
-  24 hours are pruned each minute. Gaps indicate the monitor was not collecting.
+  30 days are pruned each minute. A month means a rolling 30-day window, not a
+  calendar month. Existing samples are preserved on upgrade; previously pruned
+  samples cannot be recovered, so the longer history fills as collection continues.
+  Gaps indicate the monitor was not collecting.
   SQLite reuses freed pages; the database file need not shrink after pruning.
 - **Chart scale:** Zoom to usage is the default and scales to the visible series
   with headroom. Full capacity shows all installed RAM (or 100% machine CPU).
-  Memory capacity remains labelled in both modes. The 15m, 1h, 6h, and 24h
-  ranges are available.
+  Memory capacity remains labelled in both modes. The 15m, 1h, 6h, 24h, 7d, and
+  30d ranges are available; 24h remains the default. Multi-day views show dates
+  on the time axis.
 
 ## Machine health, cleanup candidates, and storage
 
@@ -218,8 +222,10 @@ Same-origin, read-only HTTP endpoints:
 | `GET /api/disk-usage` | Cached per-project scan results and current scan status |
 | `GET /api/disk-usage?scan=1&project=<project-id>` | Start a bounded read-only background scan; returns 202, or 409 if another project is scanning |
 
-History accepts `hours=0.25..24`. Snapshot fields `machine_health` and
-`cleanup_candidates` contain health checks and the current review shortlist.
+History accepts `hours=0.25..720` (30 days), defaulting to 24 hours. For example,
+`GET /api/history?hours=720&entity=host` returns the full month. Snapshot fields
+`machine_health` and `cleanup_candidates` contain health checks and the current
+review shortlist.
 
 History entities are `host`, `projects`, `project:<id>`, or `worktree:<id>`.
 IDs are stable hashes of the local Git common directory or worktree path.

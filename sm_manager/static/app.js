@@ -420,7 +420,7 @@ function renderChart() {
     data && data.entity === state.entity && data.hours === state.hours;
   const isMemory = state.metric === "memory_bytes";
   $("history-subtitle").textContent =
-    `${state.hours === 0.25 ? "15m" : `${state.hours}h`} · ${isMemory ? "memory" : "machine CPU %"}`;
+    `${state.hours === 0.25 ? "15m" : state.hours > 24 ? `${state.hours / 24}d` : `${state.hours}h`} · ${isMemory ? "memory" : "machine CPU %"}`;
   if (!current) {
     $("chart").innerHTML =
       `<div class="chart-placeholder">${state.historyError ? "History unavailable. Retrying…" : "Loading history…"}</div>`;
@@ -524,10 +524,16 @@ function renderChart() {
     ? `<g class="chart-capacity"><line x1="${left}" x2="${width - right}" y1="${y(capacity)}" y2="${y(capacity)}"/><text x="${width - right}" y="${y(capacity) - 9}" text-anchor="end">${bytes(capacity)} total capacity</text></g>`
     : capacity ? `<g class="chart-capacity"><text x="${width - right}" y="${top - 9}" text-anchor="end">${bytes(capacity)} total capacity · zoom to usage</text></g>` : "";
   const ticks = width < 450 ? [0, 0.5, 1] : [0, 0.25, 0.5, 0.75, 1];
+  const axisTime = (timestamp) => {
+    const date = new Date(timestamp * 1000);
+    return data.hours > 24
+      ? date.toLocaleDateString([], { month: "short", day: "numeric" })
+      : date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  };
   const labels = ticks
     .map(
       (r) =>
-        `<text x="${left + graphW * r}" y="${height - 4}" text-anchor="${r === 0 ? "start" : r === 1 ? "end" : "middle"}">${r === 1 ? "Now" : new Date((start + data.hours * 3600 * r) * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false })}</text>`,
+        `<text x="${left + graphW * r}" y="${height - 4}" text-anchor="${r === 0 ? "start" : r === 1 ? "end" : "middle"}">${r === 1 ? "Now" : axisTime(start + data.hours * 3600 * r)}</text>`,
     )
     .join("");
   const lines = [...visible]
@@ -563,7 +569,7 @@ function renderChart() {
     `<svg viewBox="0 0 ${width} ${height}" aria-hidden="true">${grid}${capacityLine}${lines}${labels}<g id="chart-cursor" hidden></g></svg><div id="chart-tooltip" class="chart-tooltip" role="tooltip" aria-live="off" hidden></div>`;
   $("chart").setAttribute(
     "aria-label",
-    `${isMemory ? "Memory" : "CPU"} history, last ${data.hours} hours.${capacity ? ` Total capacity ${bytes(capacity)}.` : ""} ${visible.length} visible series: ${visible.map((series) => series.label).join(", ")}.`,
+    `${isMemory ? "Memory" : "CPU"} history, last ${data.hours > 24 ? `${data.hours / 24} days` : `${data.hours} hours`}.${capacity ? ` Total capacity ${bytes(capacity)}.` : ""} ${visible.length} visible series: ${visible.map((series) => series.label).join(", ")}.`,
   );
   state.chart = {
     visible,
@@ -617,7 +623,10 @@ function showChartTooltip(timestamp, announce = false) {
     ...(bucket < 60 ? {second: "2-digit"} : {}),
     hour12: false,
   });
-  const until = new Date((nearest + bucket) * 1000).toLocaleTimeString([], {
+  const untilDate = new Date((nearest + bucket) * 1000);
+  const crossesDay = new Date(nearest * 1000).toDateString() !== untilDate.toDateString();
+  const until = untilDate.toLocaleString([], {
+    ...(crossesDay ? { month: "short", day: "numeric" } : {}),
     hour: "2-digit",
     minute: "2-digit",
     ...(bucket < 60 ? {second: "2-digit"} : {}),
