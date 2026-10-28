@@ -120,6 +120,64 @@ class MetricsTests(unittest.TestCase):
 
 
 class HistoryTests(unittest.TestCase):
+    def test_month_retention_boundary_and_persistence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            history = History(directory)
+            now = 1800000000
+            day = 24 * 60 * 60
+            entities = ("host", "projects", "codex", "other", "project:p", "worktree:w")
+            timestamps = (now - 30 * day - 1, now - 30 * day, now - 7 * day, now - 2 * day)
+            with history.db:
+                history.db.executemany("INSERT INTO samples VALUES(?,?,?,?)",
+                                       ((timestamp, entity, 5, 100) for timestamp in timestamps for entity in entities))
+            history.close()
+            history = History(directory)
+            self.addCleanup(history.close)
+            snapshot = {"timestamp": now, "system": {"cpu_percent": 5, "memory_used": 100},
+                        "totals": {"cpu_percent": 2, "memory_bytes": 20},
+                        "codex": {"cpu_percent": 1, "memory_bytes": 30}, "projects": []}
+            history.record(snapshot)
+            for entity in entities:
+                with self.subTest(entity=entity):
+                    stored = [row[0] for row in history.db.execute(
+                        "SELECT timestamp FROM samples WHERE entity=? AND timestamp<? ORDER BY timestamp", (entity, now))]
+                    self.assertEqual(stored, list(timestamps[1:]))
+                    month = history.query(entity, 720, now=now)
+                    self.assertEqual(month["hours"], 720)
+                    self.assertEqual(month["started_at"], now - 30 * day)
+                    self.assertGreaterEqual(len(month["points"]), 3)
+                    self.assertTrue(all(point["timestamp"] > now - 2 * day
+                                        for point in history.query(entity, 24, now=now)["points"]))
+            # Pruning advances on subsequent collection and preserves the exact cutoff.
+            snapshot["timestamp"] += 60
+            history.record(snapshot)
+            self.assertEqual(history.db.execute("SELECT MIN(timestamp) FROM samples").fetchone()[0], now - 7 * day)
+
+    def test_month_queries_bound_buckets_and_preserve_averages_and_peaks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            history = History(directory)
+            self.addCleanup(history.close)
+            now = 1800000000  # Aligned to a four-hour bucket.
+            with history.db:
+                history.db.executemany("INSERT INTO samples VALUES(?,?,?,?)",
+                                       ((now - hour * 3600, "host", hour % 4, (hour % 4) * 100)
+                                        for hour in range(721)))
+                history.db.execute("INSERT INTO samples VALUES(?,?,?,?)", (now + 1, "host", 99, 99999))
+                history.db.execute("INSERT INTO samples VALUES(?,?,?,?)", (now + 1, "future", 99, 99999))
+            month = history.query("host", 720, now=now)
+            self.assertEqual(month["bucket_seconds"], 4 * 3600)
+            self.assertEqual(len(month["points"]), 181)
+            for point in month["points"][:-1]:
+                self.assertEqual(point["cpu_percent"], 1.5)
+                self.assertEqual(point["memory_bytes"], 150)
+                self.assertEqual(point["cpu_peak"], 3)
+                self.assertEqual(point["memory_peak"], 300)
+            self.assertEqual(month["points"][-1]["cpu_peak"], 0)
+            self.assertEqual(history.query("host", 1000, now=now), month)
+            self.assertEqual(history.query("host", now=now)["hours"], 24)
+            self.assertEqual(history.query("unknown", 720, now=now)["points"], [])
+            self.assertIsNone(history.query("future", 720, now=now)["started_at"])
+
     def test_retention_aggregation_and_restart(self):
         with tempfile.TemporaryDirectory() as directory:
             history = History(directory)

@@ -312,6 +312,9 @@ footer {
   gap: 8px;
   border-bottom: 1px solid var(--line);
 }
+.history-panel .panel-heading {
+  flex-wrap: wrap;
+}
 h2 {
   font-size: 12px;
   font-weight: 600;

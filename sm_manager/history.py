@@ -3,7 +3,8 @@ import threading
 import time
 from pathlib import Path
 
-RETENTION = 24 * 60 * 60
+RETENTION_HOURS = 30 * 24
+RETENTION = RETENTION_HOURS * 60 * 60
 
 
 class History:
@@ -45,14 +46,14 @@ class History:
 
     def query(self, entity="host", hours=24, now=None):
         now = now or time.time()
-        hours = max(0.25, min(24, hours))
+        hours = max(0.25, min(RETENTION_HOURS, hours))
         bucket = max(10, int(hours * 3600 / 180))
         with self.lock:
             rows = self.db.execute("""SELECT CAST(timestamp / ? AS INTEGER) * ?, AVG(cpu), AVG(memory), MAX(cpu), MAX(memory)
                 FROM samples WHERE entity=? AND timestamp>=? AND timestamp<=?
                 GROUP BY CAST(timestamp / ? AS INTEGER) ORDER BY MIN(timestamp)""",
                 (bucket, bucket, entity, now - hours * 3600, now, bucket)).fetchall()
-            first = self.db.execute("SELECT MIN(timestamp) FROM samples WHERE entity=? AND timestamp>=?", (entity, now - RETENTION)).fetchone()[0]
+            first = self.db.execute("SELECT MIN(timestamp) FROM samples WHERE entity=? AND timestamp>=? AND timestamp<=?", (entity, now - RETENTION, now)).fetchone()[0]
         return {"entity": entity, "hours": hours, "bucket_seconds": bucket, "started_at": first,
                 "points": [{"timestamp": r[0], "cpu_percent": r[1], "memory_bytes": r[2], "cpu_peak": r[3], "memory_peak": r[4]} for r in rows]}
 
