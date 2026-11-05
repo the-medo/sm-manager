@@ -11,6 +11,7 @@ standard library backend, SQLite 30-day history, buildless browser UI.
 - `sm_manager/history.py`: bounded persistent samples.
 - `sm_manager/server.py`: loopback API and explicit static asset allowlist.
 - `scripts/manage.py`: owned systemd service and optional Tailscale Serve route.
+- `scripts/updater.py`: installed main-branch updater and isolated runtime clone.
 
 ## Run and verify
 
@@ -20,6 +21,16 @@ restart with `python3 scripts/manage.py restart`. Leave the app running.
 Read the saved access profile at `~/.config/sm-manager/config.json` for the exact
 private browser URL. Do not hardcode a host, username, or machine path in source.
 Verify `/api/health`, `/api/snapshot`, and the browser through that URL.
+
+With `install --auto-update`, the service runs remote `main` from the independent
+`<data_dir>/deployment/checkout`, not a development worktree. It checks for updates
+before startup and every five minutes. Do not edit or remove that runtime clone.
+After merging this project's branch, run `python3 scripts/manage.py update` and
+verify the service before cleaning up the merged development branch/worktree.
+If that script is unavailable, use `systemctl --user start sm-manager-update.service`.
+Changes to the updater or generated units require rerunning
+`python3 scripts/manage.py install --auto-update` from the updated source.
+Update tests must use temporary Git repositories and mock all service controls.
 
 Never bind the app to all interfaces, enable Funnel, reset Serve, overwrite
 another application's route, or publish collected machine data. Runtime

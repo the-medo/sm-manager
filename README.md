@@ -61,6 +61,56 @@ startup before login, enable user lingering with `loginctl enable-linger "$USER"
 if that matches how you manage your machine. Availability depends on the host and
 its user service manager being up.
 
+### Follow main automatically
+
+To run the remote `main` branch at boot, before login, and check for updates
+every five minutes:
+
+```bash
+python3 scripts/manage.py install --auto-update
+```
+
+This enables user lingering and installs `sm-manager-update.timer`. It creates
+an independent clone of this repository's `origin` in
+`<data_dir>/deployment/checkout`, and runs the service there. Development
+branches, uncommitted edits, and disposable worktrees do not affect the running
+app. The installer retains the saved private URL, HTTPS proxy configuration,
+and history. Git access must work without interactive prompts or a login-session
+SSH agent; the updater uses SSH batch mode with a connection timeout.
+
+Before each start, the installed updater fetches `main` and accepts only
+fast-forward changes that pass the test suite in a temporary checkout. If the
+network, credentials, or tests fail, startup uses the installed version and the
+timer retries later. While running, validation happens before stopping the app;
+the updater then advances the runtime checkout and starts it again. If that
+live update fails its health check, it restores the previous code and starts it.
+History is preserved, but database migrations are not rolled back. A manually
+stopped app stays stopped during timer checks. Dirty runtime checkouts and
+rewritten remote history are rejected for manual review.
+
+After merging a branch, an agent can deploy immediately before cleaning up its
+development worktree:
+
+```bash
+python3 scripts/manage.py update
+python3 scripts/manage.py status
+```
+
+The same operation is available independently of any development checkout:
+
+```bash
+systemctl --user start sm-manager-update.service
+journalctl --user -u sm-manager-update.service -n 70 --no-pager
+```
+
+`status` shows the deployed revision and timer. `logs` includes both the app and
+updater. The updater is installed outside the development tree so cleanup cannot
+remove it. After changing updater or unit-generation code, rerun
+`install --auto-update` from the updated source to refresh those installed files.
+To pause polling, run `systemctl --user disable --now sm-manager-update.timer`;
+the startup check remains enabled. Uninstall removes both updater units and
+retains the runtime clone, history, and account's lingering setting.
+
 For a stable **private** browser URL on another computer in your tailnet:
 
 ```bash
