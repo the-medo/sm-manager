@@ -230,6 +230,7 @@ class AttributionTests(unittest.TestCase):
             collector = Collector(config)
             w = worktree("/workspace/app")
             collector.discovery.worktrees = {w["id"]: w}
+            collector.discovery.project_info = {w["project_id"]: {"description": "Local app", "icon_url": "/api/project-icon/project/version"}}
             collector.discovery.codex = {"threads": [], "available": False, "status": "missing"}
             collector.last_discovery = time.monotonic()
             def proc(pid, ppid, cwd, memory, container=False, codex=False):
@@ -241,6 +242,7 @@ class AttributionTests(unittest.TestCase):
             with patch.object(collector.processes, "sample", return_value=(processes, {"memory_used": 2000, "cpu_percent": 8})), patch.object(collector.docker, "sample", return_value=[container]), patch.object(collector.machine_health, "sample", return_value={"checks": []}):
                 result = collector.sample()
             self.assertEqual(result["totals"]["memory_bytes"], 350)
+            self.assertEqual(result["projects"][0]["info"]["description"], "Local app")
             self.assertEqual(result["codex"]["memory_bytes"], 80)
             actual = result["projects"][0]["worktrees"][0]
             self.assertEqual(len(actual["processes"]), 2)

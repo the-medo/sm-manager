@@ -112,6 +112,7 @@ class Collector:
             project = projects.setdefault(worktree["project_id"], {"id": worktree["project_id"], "name": worktree["project_name"], "worktrees": []})
             project["worktrees"].append(worktree)
         for project in projects.values():
+            project["info"] = self.discovery.project_info.get(project["id"], {})
             project.update(resources(project["worktrees"]))
             project["running_worktrees"] = sum(w["running"] for w in project["worktrees"])
             project["container_count"] = sum(len(w["containers"]) for w in project["worktrees"])
@@ -154,6 +155,10 @@ class Collector:
             self.snapshot = result
             self.error = None
         return result
+
+    def get_project_icon(self, project_id, version):
+        icon = self.discovery.project_icons.get(project_id)
+        return icon if icon and icon["version"] == version else None
 
     def get_snapshot(self):
         with self.lock:

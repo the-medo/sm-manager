@@ -19,15 +19,15 @@ def handler_for(collector, config):
         def log_message(self, format, *args):
             logging.getLogger("http").debug(format, *args)
 
-        def respond(self, status, payload, content_type="application/json"):
+        def respond(self, status, payload, content_type="application/json", icon=False):
             body = json.dumps(payload, separators=(",", ":")).encode() if content_type == "application/json" else payload
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
+            self.send_header("Cache-Control", "private, max-age=3600" if icon else "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
-            self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+            self.send_header("Content-Security-Policy", "sandbox; default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'" if icon else "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
             self.end_headers()
             try:
                 self.wfile.write(body)
@@ -56,6 +56,14 @@ def handler_for(collector, config):
                     return self.respond(503, {"error": "Taking the first sample. Please wait a moment."})
                 if url.path == "/api/snapshot":
                     return self.respond(200, snapshot)
+                if url.path.startswith("/api/project-icon/"):
+                    parts = url.path.split("/")
+                    if len(parts) != 5 or parts[3] not in {p["id"] for p in snapshot["projects"]}:
+                        return self.respond(404, {"error": "Project icon not found"})
+                    icon = collector.get_project_icon(parts[3], parts[4])
+                    if not icon:
+                        return self.respond(404, {"error": "Project icon not found"})
+                    return self.respond(200, icon["data"], icon["mime"], icon=True)
                 if url.path == "/api/history":
                     query = parse_qs(url.query)
                     try:

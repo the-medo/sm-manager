@@ -274,7 +274,7 @@ function matchingProjects() {
         (w) =>
           (!running || w.running) &&
           (!query ||
-            `${p.name} ${w.branch} ${w.path}`.toLowerCase().includes(query)),
+            `${p.name} ${p.info?.description || ""} ${w.branch} ${w.path}`.toLowerCase().includes(query)),
       ),
     }))
     .filter((p) => p.worktrees.length);
@@ -287,16 +287,63 @@ function matchingProjects() {
           : b.memory_bytes - a.memory_bytes) || a.name.localeCompare(b.name),
   );
 }
+function projectAvatar(project) {
+  const initials = project.name.split(/[^\p{L}\p{N}]+/u).filter(Boolean)
+    .slice(0, 2).map((part) => [...part][0]).join("").toUpperCase() || "?";
+  const icon = project.info?.icon_url;
+  const localIcon = /^\/api\/project-icon\/[a-f0-9]{16}\/[a-f0-9]{16}$/.test(icon || "");
+  return `<span class="project-avatar" style="--project-color:${projectColor(project.id)}" aria-hidden="true"><span>${e(initials)}</span>${localIcon ? `<img src="${e(icon)}" alt="" loading="lazy" decoding="async">` : ""}</span>`;
+}
+function runningBadge(project) {
+  return `<span class="running-badge ${project.running_worktrees ? "" : "idle"}">${project.running_worktrees ? '<span class="status-dot"></span> Running' : "Idle"}</span>`;
+}
+function webURL(value) {
+  try {
+    const url = new URL(value);
+    return ["https:", "http:"].includes(url.protocol) && !url.username && !url.password ? url : null;
+  } catch {
+    return null;
+  }
+}
+function projectInfo(project) {
+  const info = project.info || {};
+  const repository = webURL(info.repository_url);
+  const links = [...new Set(project.worktrees.flatMap((w) => (w.urls || []).map((link) => link.url)))].map(webURL).filter(Boolean);
+  const path = info.path || project.worktrees.find((w) => w.is_main)?.path || project.worktrees[0]?.path || "";
+  return `<aside class="project-info" aria-label="${e(project.name)} project details">
+    <div class="project-info-identity">${projectAvatar(project)}<div><h3>${e(project.name)}</h3>${runningBadge(project)}</div></div>
+    <p class="project-description ${info.description ? "" : "muted"}">${e(info.description || "No description available.")}</p>
+    <div class="project-tags">${(info.languages || []).map((language) => `<span>${e(language)}</span>`).join("")}${info.version ? `<span title="Package version">v${e(info.version)}</span>` : ""}</div>
+    <div class="project-directory"><span>Checkout</span><code title="${e(path)}">${e(path)}</code></div>
+    ${repository ? `<a class="project-link" href="${e(repository.href)}" target="_blank" rel="noreferrer" title="${e(repository.host + repository.pathname)}"><span>Repository</span><span aria-hidden="true">↗</span></a>` : ""}
+    ${links.slice(0, 3).map((url) => `<a class="project-link" href="${e(url.href)}" target="_blank" rel="noreferrer" title="${e(url.href)}"><span>Open ${e(url.host)}</span><span aria-hidden="true">↗</span></a>`).join("")}
+    ${links.length > 3 ? `<span class="project-more-links">${links.length - 3} more app links in worktree details</span>` : ""}
+  </aside>`;
+}
 function renderProjects() {
   const projects = matchingProjects();
   $("project-count").textContent = projects.length;
   $("projects").innerHTML = projects.length
-    ? projects
-        .map((p) => {
-          const collapsed = state.collapsed.has(p.id);
-          return `<article class="project-card"><div class="project-heading"><div class="project-identity"><div class="project-title">${e(p.name)}<span class="running-badge ${p.running_worktrees ? "" : "idle"}">${p.running_worktrees ? '<span class="status-dot"></span> Running' : "Idle"}</span></div><div class="project-meta">${p.worktrees.length} wt · ${p.process_count} proc · ${p.container_count} ctr${state.storage?.projects[p.id] ? ` · ${bytes(state.storage.projects[p.id].bytes)} disk` : ""}</div></div><div class="project-totals numeric"><span class="project-memory" title="Project memory">${bytes(p.memory_bytes)}</span><span title="Project CPU">${percent(p.cpu_percent)}</span></div><button class="collapse-button" data-collapse="${e(p.id)}" aria-expanded="${!collapsed}" aria-controls="tree-${e(p.id)}" aria-label="${collapsed ? "Expand" : "Collapse"} ${e(p.name)}">${collapsed ? "+" : "−"}</button></div><div id="tree-${e(p.id)}" ${collapsed ? "hidden" : ""}><div class="tree-columns"><span>Worktree / branch</span><span class="services-heading">Proc / containers</span><span class="ports-heading">Ports</span><span class="align-right memory-heading">Memory</span><span class="align-right">CPU</span><span></span></div>${p.worktrees.map((w) => `<div class="worktree-row" data-worktree="${e(w.id)}" role="button" tabindex="0" aria-label="Inspect ${e(p.name)} ${e(w.branch)}"><div class="worktree-name"><span class="branch-icon" aria-hidden="true">⑂</span><div class="branch-label"><span class="branch-title" title="${e(w.path)}">${e(w.branch)}</span><span class="branch-info">${w.is_main ? "[main]" : ""}${w.codex_managed ? '<span class="codex-marker" title="Codex worktree">✳</span>' : ""}</span></div></div><span class="service-summary">${w.running ? `${w.processes.length} proc / ${w.containers.length} ctr` : "Idle"}</span><span class="row-ports" title="${e(w.ports.join(", "))}">${w.ports.length ? e(w.ports.join(", ")) : "—"}</span><span class="row-memory">${w.running ? bytes(w.memory_bytes) : "—"}</span><span class="row-cpu">${w.running ? percent(w.cpu_percent) : "—"}</span><span class="row-arrow" aria-hidden="true">↗</span></div>`).join("")}</div></article>`;
-        })
-        .join("")
+    ? projects.map((p) => {
+      const collapsed = state.collapsed.has(p.id);
+      return `<article class="project-card">
+        ${projectInfo(p)}
+        <div class="project-worktrees">
+          <div class="project-heading">
+            <div class="project-identity">
+              <div class="project-title"><span class="project-overview-name">${projectAvatar(p)}${e(p.name)}</span><span class="project-table-title">Worktrees</span><span class="project-heading-status">${runningBadge(p)}</span></div>
+              <div class="project-meta">${p.worktrees.length} wt · ${p.process_count} proc · ${p.container_count} ctr${state.storage?.projects[p.id] ? ` · ${bytes(state.storage.projects[p.id].bytes)} disk` : ""}</div>
+            </div>
+            <div class="project-totals numeric"><span class="project-memory" title="Project memory">${bytes(p.memory_bytes)}</span><span title="Project CPU">${percent(p.cpu_percent)}</span></div>
+            <button class="collapse-button" data-collapse="${e(p.id)}" aria-expanded="${!collapsed}" aria-controls="tree-${e(p.id)}" aria-label="${collapsed ? "Expand" : "Collapse"} ${e(p.name)}">${collapsed ? "+" : "−"}</button>
+          </div>
+          <div id="tree-${e(p.id)}" ${collapsed ? "hidden" : ""}>
+            <div class="tree-columns"><span>Worktree / branch</span><span class="services-heading">Proc / containers</span><span class="ports-heading">Ports</span><span class="align-right memory-heading">Memory</span><span class="align-right">CPU</span><span></span></div>
+            ${p.worktrees.map((w) => `<div class="worktree-row" data-worktree="${e(w.id)}" role="button" tabindex="0" aria-label="Inspect ${e(p.name)} ${e(w.branch)}"><div class="worktree-name"><span class="branch-icon" aria-hidden="true">⑂</span><div class="branch-label"><span class="branch-title" title="${e(w.path)}">${e(w.branch)}</span><span class="branch-info">${w.is_main ? "[main]" : ""}${w.codex_managed ? '<span class="codex-marker" title="Codex worktree">✳</span>' : ""}</span></div></div><span class="service-summary">${w.running ? `${w.processes.length} proc / ${w.containers.length} ctr` : "Idle"}</span><span class="row-ports" title="${e(w.ports.join(", "))}">${w.ports.length ? e(w.ports.join(", ")) : "—"}</span><span class="row-memory">${w.running ? bytes(w.memory_bytes) : "—"}</span><span class="row-cpu">${w.running ? percent(w.cpu_percent) : "—"}</span><span class="row-arrow" aria-hidden="true">↗</span></div>`).join("")}
+          </div>
+        </div>
+      </article>`;
+    }).join("")
     : `<div class="empty">${$("search").value ? "No projects match your search." : "No running projects."}<p>${$("running-only").checked ? "Turn off “Running only” to view idle worktrees." : "Add project directories in the local configuration."}</p></div>`;
 }
 function processTable(processes) {
@@ -797,6 +844,9 @@ async function refresh() {
     setTimeout(refresh, (state.snapshot?.interval || 5) * 1000);
   }
 }
+$("projects").addEventListener("error", (event) => {
+  if (event.target.matches(".project-avatar img")) event.target.remove();
+}, true);
 $("search").addEventListener("input", () => state.snapshot && renderProjects());
 $("running-only").addEventListener(
   "change",

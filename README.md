@@ -27,6 +27,14 @@ agent to inspect the host every time.
 The dashboard is read only. It doesn't stop processes, remove worktrees, delete
 volumes, or run repository scripts. Cleanup briefs are a handoff to your agent.
 
+The Projects page shows a project info panel beside each worktree table: a local
+favicon (or initials), description, package version, checkout path, repository
+link, and discovered private app links. Metadata is refreshed with discovery,
+preferring the primary checkout. Bounded scans read `package.json`,
+`pyproject.toml`, HTML icon declarations, and common favicon files; dependencies,
+build output, hidden files, and symlinks are skipped. Icons are served locally
+with the same access checks as the API. No external favicon service is used.
+
 ## Run
 
 ```bash

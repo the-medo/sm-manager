@@ -7,6 +7,8 @@ import sqlite3
 import subprocess
 from pathlib import Path
 
+from .project_info import inspect_project, repository_url
+
 SKIP = {"node_modules", "vendor", "dist", "build", "target", "__pycache__", "nodejs", ".venv", "venv", "coverage"}
 
 
@@ -60,6 +62,8 @@ class Discovery:
         self.config = config
         self.worktrees = {}
         self.codex = {}
+        self.project_info = {}
+        self.project_icons = {}
 
     def refresh(self, extra_paths=()):
         self.codex = codex_metadata(self.config["codex_home"])
@@ -118,6 +122,20 @@ class Discovery:
                 "codex_managed": within(top, str(Path(self.config["codex_home"]) / "worktrees")),
             }
         self.worktrees = found
+        project_info, project_icons = {}, {}
+        # Prefer the primary checkout so branch-specific assets do not flicker.
+        for worktree in sorted(found.values(), key=lambda w: (not w["is_main"], w["path"])):
+            pid = worktree["project_id"]
+            if pid in project_info:
+                continue
+            info, icon = inspect_project(worktree["path"])
+            info["repository_url"] = repository_url(run(["git", "-C", worktree["path"], "config", "--get", "remote.origin.url"]))
+            info["icon_url"] = f"/api/project-icon/{pid}/{icon['version']}" if icon else ""
+            project_info[pid] = info
+            if icon:
+                project_icons[pid] = icon
+        self.project_info = project_info
+        self.project_icons = project_icons
 
     def match(self, path):
         if not path:
