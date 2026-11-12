@@ -71,3 +71,16 @@ test("expiry revokes page, worktree and chooser launches while preserving the la
   assert.match(ui.$("dbs-groups").innerHTML, /available/);
   assert.doesNotMatch(ui.$("dbs-groups").innerHTML, /href=/);
 });
+
+test("external environments have independent named profiles and never match a checkout", () => {
+  const rows = ["dev", "prod"].map((env) => ({
+    ...db("shared-db", null), group: env.toUpperCase(), name: env + "-example",
+  }));
+  const ui = catalog([...rows, db("local", null)]);
+  ui.renderDbsPage();
+  const cards = ui.$("dbs-groups").innerHTML.split("</article>");
+  assert.match(cards[0], /<h2>DEV<\/h2>[\s\S]*dev-example[\s\S]*shared-db/);
+  assert.match(cards[1], /<h2>PROD<\/h2>[\s\S]*prod-example[\s\S]*shared-db/);
+  assert.match(cards[2], /Unassigned[\s\S]*local/);
+  assert.equal(ui.dbAction("/repo", "primary_path"), "");
+});

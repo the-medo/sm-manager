@@ -71,6 +71,13 @@ class DbCatalogTests(unittest.TestCase):
         self.assertGreater(fresh["fresh_for_seconds"], 0)
         self.assertEqual(fresh["connections"], [self.db])
 
+    def test_external_group_preserves_name_and_launch_rules_without_checkout_ownership(self):
+        external = dict(self.db, group="Demo DEV", name="dev-example", owner=None, group_checked_at=self.now.isoformat())
+        self.publish([external, dict(external, id="offline", status="configured")])
+        online, offline = read_db_catalog(self.path)["connections"]
+        self.assertEqual(online, external)
+        self.assertIsNone(offline["cloudbeaver_url"])
+
     def test_only_cloudbeaver_https_open_urls_with_one_id(self):
         for url in (URL, LAUNCHER + "?id=connection%3Aexample", URL.replace(".com/", ".com:443/")):
             self.assertEqual(launch_url(url), url)

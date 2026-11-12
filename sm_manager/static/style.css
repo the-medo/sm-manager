@@ -560,6 +560,11 @@ p {
 .db-rows code, .db-status {
   color: var(--muted);
 }
+.db-catalog-name {
+  display: block;
+  color: var(--muted);
+  font-weight: normal;
+}
 .db-status {
   text-transform: capitalize;
 }
