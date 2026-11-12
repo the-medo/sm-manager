@@ -16,6 +16,7 @@ agent to inspect the host every time.
   views remain available.
 - Discovers Codex worktrees and shows local thread recency and runtime overhead.
 - Links to apps that already have a private Tailscale Serve route.
+- Opens the exact remote checkout in your local Zed client from the dashboard.
 - Copies a cleanup brief with exact resource identities for an agent to review.
 - Checks Docker, private Tailscale access, sleep protection, free disk space,
   memory pressure, and observed operating-system version changes.
@@ -151,6 +152,7 @@ Create `~/.config/sm-manager/config.json` (or under `$XDG_CONFIG_HOME`):
   "interval": 10,
   "discovery_interval": 60,
   "scan_depth": 4,
+  "zed_catalog_path": "~/zed-projects/projects.json",
   "docker_socket": "/var/run/docker.sock",
   "allowed_hosts": ["localhost", "127.0.0.1"],
   "container_overrides": {
@@ -168,6 +170,19 @@ Discovery searches the configured roots, existing Codex thread/worktree paths,
 and directories used by running processes and containers. It skips dependency
 and build directories, then asks Git for linked worktrees. Nested repositories
 are treated as separate projects when discovered through their own root/path.
+
+### Open a checkout in Zed
+
+Choose **Zed** in the sidebar to browse all published checkouts, including idle
+ones, by project family and repository. The main checkout appears first. Each
+**Z** link hands the published SSH URL to your browser's Zed handler. From
+Windows, the link opens the Steam Machine directory in your local Zed client.
+
+The dashboard rereads the version 1 catalog every minute. Set `zed_catalog_path`
+to use a different file. Monitor rows match catalog entries by absolute path.
+For an existing checkout known only to the monitor, SM Manager uses the
+catalog's `ssh_base_url` and percent-encodes the directory path. If the catalog
+is unavailable, resource monitoring continues and the Zed page retries.
 
 ### Docker ownership
 
@@ -275,6 +290,7 @@ Same-origin, read-only HTTP endpoints:
 | --- | --- |
 | `GET /api/health` | Collector readiness and sample freshness |
 | `GET /api/snapshot` | Projects, worktrees, processes, containers, Codex, host |
+| `GET /api/zed` | Published checkout groups with revisions and Zed URLs, plus links for monitor-only directories |
 | `GET /api/history?hours=24&entity=host` | Time-bucketed CPU and memory |
 | `GET /api/cleanup-plan/<worktree-id>` | Resource identities and a cleanup brief |
 | `GET /api/disk-usage` | Cached per-project scan results and current scan status |

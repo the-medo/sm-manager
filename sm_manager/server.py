@@ -8,6 +8,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from .collector import Collector, cleanup_plan
 from .history import RETENTION_HOURS
+from .zed import read_catalog
 
 STATIC = Path(__file__).parent / "static"
 
@@ -49,6 +50,19 @@ def handler_for(collector, config):
             url = urlsplit(self.path)
             if url.path.startswith("/api/"):
                 snapshot = collector.get_snapshot()
+                if url.path == "/api/zed":
+                    projects = (snapshot or {}).get("projects", [])
+                    paths = {w["path"] for p in projects for w in p["worktrees"]}
+                    if projects:
+                        cached = collector.disk_usage.status({p["id"] for p in projects})["projects"]
+                        paths.update(w["path"] for p in cached.values() for w in p.get("worktrees", []) if w.get("path"))
+                    try:
+                        catalog = read_catalog(config["zed_catalog_path"], paths)
+                    except OSError:
+                        return self.respond(503, {"error": "Could not read the Zed catalog. Check zed_catalog_path."})
+                    except (ValueError, RecursionError):
+                        return self.respond(503, {"error": "Invalid Zed catalog. Expected a version 1 projects file."})
+                    return self.respond(200, catalog)
                 if url.path == "/api/health":
                     healthy = bool(snapshot and not snapshot["stale"])
                     return self.respond(200 if healthy else 503, {"status": "ok" if healthy else "warming" if not snapshot else "stale", "last_sample": snapshot["timestamp"] if snapshot else None})

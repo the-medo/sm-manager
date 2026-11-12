@@ -27,6 +27,7 @@ const codexColor = "#c4b5fd";
 const otherColor = "#91a0b2";
 const state = {
   snapshot: null,
+  zedByPath: new Map(),
   history: null,
   hours: 24,
   metric: "memory_bytes",
@@ -54,6 +55,7 @@ const views = {
   containers: "Containers",
   codex: "Codex",
   storage: "Storage",
+  zed: "Zed",
 };
 
 function projectColor(id) {
@@ -218,13 +220,55 @@ function renderHealth() {
     ? health.checks.map((check) => `<div class="health-check health-${e(check.status)}" title="${e(check.detail)}"><div class="health-label"><span class="health-dot" aria-hidden="true"></span>${e(check.label)}<span class="sr-only"> · ${e(check.status)}</span></div><strong>${e(check.value)}</strong><span class="health-detail">${e(check.detail)}</span></div>`).join("")
     : '<p class="inline-note">Health checks are unavailable. Resource monitoring continues.</p>';
 }
+function zedLink(path) {
+  const tree = state.zedByPath.get(path);
+  if (!tree?.zed_url) return "";
+  const label = e(`Open ${tree.name} in Zed`);
+  return `<a class="zed-link" href="${e(tree.zed_url)}" title="${label}" aria-label="${label}"><span aria-hidden="true">Z</span></a>`;
+}
+function renderZed(groups) {
+  return groups.map((group) => `<article class="panel zed-family">
+    <div class="panel-heading"><h2>${e(group.name)}</h2></div>
+    ${group.repositories.map((repo) => `<section class="zed-repo">
+      <h3>${e(repo.name)}</h3>
+      <ul>${repo.worktrees.map((tree) => `<li>
+        <div class="zed-checkout"><strong>${e(tree.name)}</strong>${tree.is_main ? '<span class="zed-main">Main checkout</span>' : ""}
+          <code>${e(tree.path)}</code></div>
+        <span class="zed-revision">${e(tree.revision)}</span>${zedLink(tree.path)}
+      </li>`).join("")}</ul>
+    </section>`).join("")}
+  </article>`).join("") || '<div class="empty">The Zed catalog has no project families.</div>';
+}
+async function refreshZed() {
+  let html;
+  try {
+    const { groups, monitor_only } = await api("/api/zed");
+    const trees = groups.flatMap((group) => group.repositories.flatMap((repo) => repo.worktrees));
+    state.zedByPath = new Map([...monitor_only, ...trees].map((tree) => [tree.path, tree]));
+    html = renderZed(groups);
+  } catch (error) {
+    state.zedByPath.clear();
+    html = `<div class="warning">${e(error.message)} Retrying in one minute.</div>`;
+  }
+  // Keep keyboard focus on a checkout across polls of an unchanged catalog.
+  if (refreshZed.html !== html) {
+    $("zed-section").innerHTML = html;
+    refreshZed.html = html;
+  }
+  if (state.snapshot) {
+    renderWorktreeViews();
+    renderHistoryZed();
+    if ($("detail-dialog").open) $("detail-zed").innerHTML = zedLink($("detail-zed").dataset.path);
+  }
+  setTimeout(refreshZed, 60000);
+}
 function renderCandidates() {
   const candidates = state.snapshot.cleanup_candidates || [];
   const available = new Set(candidates.map((candidate) => candidate.worktree_id));
   for (const id of state.cleanupSelected) if (!available.has(id)) state.cleanupSelected.delete(id);
   $("cleanup-count").textContent = candidates.length;
   const html = candidates.length
-    ? `<div class="table-scroll"><table class="compact-table candidate-table"><thead><tr><th scope="col">Select</th><th scope="col">Project / worktree</th><th scope="col">Memory</th><th scope="col">Avg CPU</th><th scope="col">Observed</th></tr></thead><tbody>${candidates.map((candidate) => `<tr><td><input type="checkbox" data-cleanup-select="${e(candidate.worktree_id)}" aria-label="Select ${e(candidate.project_name)} ${e(candidate.branch)}" ${state.cleanupSelected.has(candidate.worktree_id) ? "checked" : ""}></td><td><button class="text-button" data-inspect-worktree="${e(candidate.worktree_id)}">${e(candidate.project_name)} / ${e(candidate.branch)}</button></td><td>${bytes(candidate.memory_bytes)}</td><td>${percent(candidate.cpu_average)}</td><td>${duration(candidate.observed_seconds)}</td></tr>`).join("")}</tbody></table></div>`
+    ? `<div class="table-scroll"><table class="compact-table candidate-table"><thead><tr><th scope="col">Select</th><th scope="col">Project / worktree</th><th scope="col">Memory</th><th scope="col">Avg CPU</th><th scope="col">Observed</th></tr></thead><tbody>${candidates.map((candidate) => `<tr><td><input type="checkbox" data-cleanup-select="${e(candidate.worktree_id)}" aria-label="Select ${e(candidate.project_name)} ${e(candidate.branch)}" ${state.cleanupSelected.has(candidate.worktree_id) ? "checked" : ""}></td><td><button class="text-button" data-inspect-worktree="${e(candidate.worktree_id)}">${e(candidate.project_name)} / ${e(candidate.branch)}</button> ${zedLink(candidate.path)}</td><td>${bytes(candidate.memory_bytes)}</td><td>${percent(candidate.cpu_average)}</td><td>${duration(candidate.observed_seconds)}</td></tr>`).join("")}</tbody></table></div>`
     : '<p class="section-note">No candidates right now. Apps need at least 15 minutes of sufficiently continuous samples with low CPU use and no recent Codex metadata updates. The monitor is excluded.</p>';
   if ($("cleanup-candidates").innerHTML !== html) {
     const focused = document.activeElement?.dataset.cleanupSelect;
@@ -244,7 +288,7 @@ function renderStorage() {
     const usage = cached[project.id];
     const scanning = state.storage?.scanning === project.id;
     const docker = usage?.docker;
-    return `<article class="panel storage-project"><div class="panel-heading"><div><h2>${e(project.name)}</h2><span class="storage-meta">${usage ? `${bytes(usage.bytes)} on disk · scanned ${e(ago(usage.scanned_at))}${usage.partial ? ' · partial scan' : ''}` : `${project.worktrees.length} worktrees · not scanned`}</span></div><button class="button" data-scan-project="${e(project.id)}" ${state.storageLoading || state.storage?.scanning ? "disabled" : ""}>${scanning ? "Scanning…" : usage ? "Rescan" : "Scan project"}</button></div>${usage ? `${usage.error ? `<p class="section-note">${e(usage.error)}</p>` : ""}<div class="table-scroll"><table class="compact-table storage-table"><thead><tr><th scope="col">Worktree / branch</th><th scope="col">Disk total</th><th scope="col">Dependencies</th><th scope="col">Build / cache</th><th scope="col">Git</th><th scope="col">Other</th></tr></thead><tbody>${usage.worktrees.map((worktree) => `<tr><td title="${e(worktree.path)}"><button class="text-button" data-inspect-worktree="${e(worktree.worktree_id)}">${e(worktree.branch)}</button>${worktree.partial ? `<span class="storage-partial" title="${e(worktree.notes.join('; '))}"> partial</span>` : ""}</td><td>${bytes(worktree.bytes)}</td>${["dependencies", "build_cache", "git", "other"].map((category) => `<td>${bytes(worktree.categories[category])}</td>`).join("")}</tr>`).join("")}</tbody></table></div><div class="storage-docker">${docker?.available ? `<span>Docker · ${docker.container_count} containers, including stopped</span><span>Writable layers <strong>${bytes(docker.writable_bytes)}</strong></span><span>Images <strong>${bytes(docker.image_bytes)}</strong>${docker.shared_images ? " · shared" : ""}</span><span>Volumes <strong>${bytes(docker.volume_bytes)}</strong>${docker.shared_volumes ? " · shared" : ""}</span>${docker.partial ? '<span class="storage-partial">Some Docker sizes unavailable</span>' : ""}` : `<span>${e(docker?.status || "Docker disk accounting unavailable")}</span>`}</div><div class="allocation-note">Allocated filesystem blocks; links are not followed, hard links are counted once per project, nested worktrees are counted separately. Docker image and volume sizes are associated storage, may overlap across projects, and are not included in the disk total.${usage.partial ? " Partial totals are lower bounds; hover partial labels for details." : ""}</div>` : scanning ? '<p class="section-note">Measuring directory sizes in the background. Other monitoring continues.</p>' : ""}</article>`;
+    return `<article class="panel storage-project"><div class="panel-heading"><div><h2>${e(project.name)}</h2><span class="storage-meta">${usage ? `${bytes(usage.bytes)} on disk · scanned ${e(ago(usage.scanned_at))}${usage.partial ? ' · partial scan' : ''}` : `${project.worktrees.length} worktrees · not scanned`}</span></div><button class="button" data-scan-project="${e(project.id)}" ${state.storageLoading || state.storage?.scanning ? "disabled" : ""}>${scanning ? "Scanning…" : usage ? "Rescan" : "Scan project"}</button></div>${usage ? `${usage.error ? `<p class="section-note">${e(usage.error)}</p>` : ""}<div class="table-scroll"><table class="compact-table storage-table"><thead><tr><th scope="col">Worktree / branch</th><th scope="col">Disk total</th><th scope="col">Dependencies</th><th scope="col">Build / cache</th><th scope="col">Git</th><th scope="col">Other</th></tr></thead><tbody>${usage.worktrees.map((worktree) => `<tr><td title="${e(worktree.path)}"><button class="text-button" data-inspect-worktree="${e(worktree.worktree_id)}">${e(worktree.branch)}</button> ${zedLink(worktree.path)}${worktree.partial ? `<span class="storage-partial" title="${e(worktree.notes.join('; '))}"> partial</span>` : ""}</td><td>${bytes(worktree.bytes)}</td>${["dependencies", "build_cache", "git", "other"].map((category) => `<td>${bytes(worktree.categories[category])}</td>`).join("")}</tr>`).join("")}</tbody></table></div><div class="storage-docker">${docker?.available ? `<span>Docker · ${docker.container_count} containers, including stopped</span><span>Writable layers <strong>${bytes(docker.writable_bytes)}</strong></span><span>Images <strong>${bytes(docker.image_bytes)}</strong>${docker.shared_images ? " · shared" : ""}</span><span>Volumes <strong>${bytes(docker.volume_bytes)}</strong>${docker.shared_volumes ? " · shared" : ""}</span>${docker.partial ? '<span class="storage-partial">Some Docker sizes unavailable</span>' : ""}` : `<span>${e(docker?.status || "Docker disk accounting unavailable")}</span>`}</div><div class="allocation-note">Allocated filesystem blocks; links are not followed, hard links are counted once per project, nested worktrees are counted separately. Docker image and volume sizes are associated storage, may overlap across projects, and are not included in the disk total.${usage.partial ? " Partial totals are lower bounds; hover partial labels for details." : ""}</div>` : scanning ? '<p class="section-note">Measuring directory sizes in the background. Other monitoring continues.</p>' : ""}</article>`;
   }).join("") || '<div class="empty">No projects discovered yet.</div>'}`;
 }
 async function loadStorage(projectId = null) {
@@ -314,7 +358,7 @@ function projectInfo(project) {
     <div class="project-info-identity">${projectAvatar(project)}<div><h3>${e(project.name)}</h3>${runningBadge(project)}</div></div>
     <p class="project-description ${info.description ? "" : "muted"}">${e(info.description || "No description available.")}</p>
     <div class="project-tags">${(info.languages || []).map((language) => `<span>${e(language)}</span>`).join("")}${info.version ? `<span title="Package version">v${e(info.version)}</span>` : ""}</div>
-    <div class="project-directory"><span>Checkout</span><code title="${e(path)}">${e(path)}</code></div>
+    <div class="project-directory"><span>Checkout</span><div class="checkout-actions"><code title="${e(path)}">${e(path)}</code>${zedLink(path)}</div></div>
     ${repository ? `<a class="project-link" href="${e(repository.href)}" target="_blank" rel="noreferrer" title="${e(repository.host + repository.pathname)}"><span>Repository</span><span aria-hidden="true">↗</span></a>` : ""}
     ${links.slice(0, 3).map((url) => `<a class="project-link" href="${e(url.href)}" target="_blank" rel="noreferrer" title="${e(url.href)}"><span>Open ${e(url.host)}</span><span aria-hidden="true">↗</span></a>`).join("")}
     ${links.length > 3 ? `<span class="project-more-links">${links.length - 3} more app links in worktree details</span>` : ""}
@@ -339,7 +383,21 @@ function renderProjects() {
           </div>
           <div id="tree-${e(p.id)}" ${collapsed ? "hidden" : ""}>
             <div class="tree-columns"><span>Worktree / branch</span><span class="services-heading">Proc / containers</span><span class="ports-heading">Ports</span><span class="align-right memory-heading">Memory</span><span class="align-right">CPU</span><span></span></div>
-            ${p.worktrees.map((w) => `<div class="worktree-row" data-worktree="${e(w.id)}" role="button" tabindex="0" aria-label="Inspect ${e(p.name)} ${e(w.branch)}"><div class="worktree-name"><span class="branch-icon" aria-hidden="true">⑂</span><div class="branch-label"><span class="branch-title" title="${e(w.path)}">${e(w.branch)}</span><span class="branch-info">${w.is_main ? "[main]" : ""}${w.codex_managed ? '<span class="codex-marker" title="Codex worktree">✳</span>' : ""}</span></div></div><span class="service-summary">${w.running ? `${w.processes.length} proc / ${w.containers.length} ctr` : "Idle"}</span><span class="row-ports" title="${e(w.ports.join(", "))}">${w.ports.length ? e(w.ports.join(", ")) : "—"}</span><span class="row-memory">${w.running ? bytes(w.memory_bytes) : "—"}</span><span class="row-cpu">${w.running ? percent(w.cpu_percent) : "—"}</span><span class="row-arrow" aria-hidden="true">↗</span></div>`).join("")}
+            ${p.worktrees.map((w) => `<div class="worktree-row">
+              <div class="worktree-name">
+                <button class="branch-label" data-inspect-worktree="${e(w.id)}" aria-label="Inspect ${e(p.name)} ${e(w.branch)}" title="${e(w.path)}">
+                  <span class="branch-icon" aria-hidden="true">⑂</span>
+                  <span class="branch-title" title="${e(w.path)}">${e(w.branch)}</span>
+                  <span class="branch-info">${w.is_main ? "[main]" : ""}${w.codex_managed ? '<span class="codex-marker" title="Codex worktree">✳</span>' : ""}</span>
+                </button>
+                ${zedLink(w.path)}
+              </div>
+              <span class="service-summary">${w.running ? `${w.processes.length} proc / ${w.containers.length} ctr` : "Idle"}</span>
+              <span class="row-ports" title="${e(w.ports.join(", "))}">${w.ports.length ? e(w.ports.join(", ")) : "—"}</span>
+              <span class="row-memory">${w.running ? bytes(w.memory_bytes) : "—"}</span>
+              <span class="row-cpu">${w.running ? percent(w.cpu_percent) : "—"}</span>
+              <span class="row-arrow" aria-hidden="true">↗</span>
+            </div>`).join("")}
           </div>
         </div>
       </article>`;
@@ -361,12 +419,12 @@ function allContainers() {
   for (const p of state.snapshot.projects)
     for (const w of p.worktrees)
       for (const c of w.containers)
-        result.push({ ...c, owner: `${p.name} / ${w.branch}` });
+        result.push({ ...c, owner: `${p.name} / ${w.branch}`, path: w.path });
   return result.sort((a, b) => (b.memory_bytes || 0) - (a.memory_bytes || 0));
 }
 function containerOwner(container) {
   return container.owner
-    ? `<button class="text-button" data-worktree="${e(container.worktree_id)}" title="${e(container.owner)}">⑂ ${e(container.owner)}</button>`
+    ? `<span class="checkout-actions"><button class="text-button" data-inspect-worktree="${e(container.worktree_id)}" title="${e(container.owner)}">⑂ ${e(container.owner)}</button>${zedLink(container.path)}</span>`
     : '<span class="muted">Unassigned</span>';
 }
 function renderContainers() {
@@ -398,8 +456,11 @@ function setView() {
   $("containers-section").hidden = state.view !== "containers";
   $("codex-section").hidden = state.view !== "codex";
   $("storage-section").hidden = state.view !== "storage";
+  $("zed-section").hidden = state.view !== "zed";
+  $("dashboard").hidden = !state.snapshot && state.view !== "zed";
+  $("loading").hidden = !$("dashboard").hidden;
   $("host-section").hidden = state.view !== "overview";
-  $("metrics").hidden = state.view === "codex";
+  $("metrics").hidden = ["codex", "zed"].includes(state.view);
   if (state.view === "storage" && state.snapshot) loadStorage();
 }
 function historySources() {
@@ -746,12 +807,18 @@ function findWorktree(id) {
   }
   return null;
 }
+function renderHistoryZed() {
+  const tree = state.entity.startsWith("worktree:") && findWorktree(state.entity.slice("worktree:".length));
+  $("history-zed").innerHTML = tree ? zedLink(tree.path) : "";
+}
 function openDetail(id) {
   const w = findWorktree(id);
   if (!w) return;
   state.selected = id;
   $("detail-project").textContent = w.project_name;
   $("detail-title").textContent = w.branch;
+  $("detail-zed").dataset.path = w.path;
+  $("detail-zed").innerHTML = zedLink(w.path);
   $("detail-content").innerHTML =
     `<p class="detail-path">${e(w.path)}</p><div class="detail-stats"><div><strong>${bytes(w.memory_bytes)}</strong><small>Resource memory estimate</small></div><div><strong>${percent(w.cpu_percent)}</strong><small>Whole-machine CPU</small></div><div><strong>${w.processes.length + w.containers.length}</strong><small>Processes + containers</small></div></div><div class="detail-links">${w.urls.map((link) => `<a class="button" href="${e(link.url)}" target="_blank" rel="noreferrer">Open app :${link.port} ↗</a>`).join("")}</div><p class="inline-note">${w.ports.length ? `Listening / published ports: ${w.ports.join(", ")}<br>` : ""}${w.recent_threads} Codex threads updated in this directory in 24h · ${e(ago(w.last_codex_activity))}<br>Snapshot taken ${new Date(state.snapshot.timestamp * 1000).toLocaleTimeString()} · reopen to refresh</p><div class="detail-section"><h3>Processes <span class="count-pill">${w.processes.length}</span></h3>${w.processes.length ? w.processes.map((p) => `<div class="detail-service"><div><strong>${e(p.name)}</strong><small>PID ${p.pid} · ${e(p.ownership)}${p.ports.length ? ` · :${p.ports.join(", :")}` : ""}</small><small>${e(p.cwd || "Directory unavailable")}</small></div><span>${bytes(p.memory_bytes)}<small>${percent(p.cpu_percent)} CPU</small></span></div>`).join("") : '<p class="inline-note">No host processes in this worktree.</p>'}</div><div class="detail-section"><h3>Containers <span class="count-pill">${w.containers.length}</span></h3>${w.containers.length ? w.containers.map((c) => `<div class="detail-service"><div><strong>${e(c.name)}</strong><small>${e(c.image)} · ${e(c.id.substring(0, 12))}</small><small>Matched by ${e(c.ownership)}</small></div><span>${bytes(c.memory_bytes)}<small>${percent(c.cpu_percent)} CPU</small></span></div>`).join("") : '<p class="inline-note">No containers mapped to this worktree.</p>'}</div><div class="cleanup-panel"><h3>Cleanup brief</h3><p>Copy a cleanup brief with this worktree's resource IDs. Your agent can review ownership and stop the app using its own lifecycle tools.</p><button class="button primary" id="copy-cleanup">Copy cleanup brief <span aria-hidden="true">↗</span></button><p class="inline-note">This button only copies text. Nothing is stopped or deleted.</p></div>`;
   if (!$("detail-dialog").open) $("detail-dialog").showModal();
@@ -766,6 +833,12 @@ function openDetail(id) {
       toast(error.message);
     }
   });
+}
+function renderWorktreeViews() {
+  renderCandidates();
+  renderProjects();
+  renderContainers();
+  renderStorage();
 }
 function render() {
   const s = state.snapshot;
@@ -787,13 +860,10 @@ function render() {
     .forEach((project) => projectColor(project.id));
   renderMetrics();
   renderHealth();
-  renderCandidates();
   renderAllocation();
-  renderProjects();
+  renderWorktreeViews();
   renderHost();
-  renderContainers();
   renderCodex();
-  renderStorage();
   if (!state.storage) loadStorage();
   const options =
     '<option value="all">All — resource comparison</option><option value="host">Whole machine</option><option value="projects">All projects · total</option><option value="codex">Codex processes</option><option value="other">System &amp; other</option>' +
@@ -817,6 +887,7 @@ function render() {
       $("history-entity").value = "all";
     }
   }
+  renderHistoryZed();
   updateConnection();
 }
 function updateConnection() {
@@ -902,6 +973,7 @@ $("copy-candidates").addEventListener("click", async () => {
 });
 $("history-entity").addEventListener("change", (event) => {
   state.entity = event.target.value;
+  renderHistoryZed();
   state.hiddenSeries.clear();
   loadHistory();
 });
@@ -965,17 +1037,6 @@ document.addEventListener("click", (event) => {
       : state.collapsed.add(id);
     renderProjects();
   }
-  const worktree = event.target.closest("[data-worktree]");
-  if (worktree) openDetail(worktree.dataset.worktree);
-});
-document.addEventListener("keydown", (event) => {
-  if (
-    (event.key === "Enter" || event.key === " ") &&
-    event.target.matches(".worktree-row")
-  ) {
-    event.preventDefault();
-    openDetail(event.target.dataset.worktree);
-  }
 });
 $("close-detail").addEventListener("click", () => $("detail-dialog").close());
 $("detail-dialog").addEventListener("click", (event) => {
@@ -1026,4 +1087,5 @@ new ResizeObserver(() => {
 }).observe($("chart"));
 setInterval(updateConnection, 5000);
 setView();
+refreshZed();
 refresh();

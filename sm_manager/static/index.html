@@ -35,6 +35,9 @@
         <a href="#storage" data-view="storage" class="nav-link"
           ><span class="nav-icon" aria-hidden="true">▥</span> Storage</a
         >
+        <a href="#zed" data-view="zed" class="nav-link"
+          ><span class="nav-icon" aria-hidden="true">ℤ</span> Zed</a
+        >
       </nav>
       <div class="sidebar-bottom">
         <div class="machine">
@@ -123,6 +126,7 @@
                   <option value="codex">Codex processes</option>
                   <option value="other">System &amp; other</option>
                 </select>
+                <span id="history-zed"></span>
               </div>
               <div
                 id="chart"
@@ -201,6 +205,9 @@
         </section>
         <section id="containers-section" hidden></section>
         <section id="codex-section" hidden></section>
+        <section id="zed-section" aria-label="Zed checkout catalog" hidden>
+          <p class="section-note">Loading Zed catalog…</p>
+        </section>
         <section id="storage-section" hidden>
           <div class="section-heading"><h2>Disk usage by project</h2><span class="subtle-tag">ON DEMAND</span></div>
           <p class="inline-note">Scan a project to measure its worktrees, dependencies, build caches, and associated Docker storage. Results are cached; nothing is deleted.</p>
@@ -222,7 +229,7 @@
       <div class="dialog-header">
         <div>
           <div class="eyebrow" id="detail-project"></div>
-          <h2 id="detail-title"></h2>
+          <div class="checkout-actions"><h2 id="detail-title"></h2><span id="detail-zed"></span></div>
         </div>
         <button
           class="icon-button"
