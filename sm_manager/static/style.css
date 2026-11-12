@@ -486,18 +486,10 @@ p {
   height: 24px;
   flex: 0 0 24px;
   vertical-align: middle;
-  color: #9dceff;
   border-radius: 3px;
-}
-.zed-link span {
-  border: 1px solid currentColor;
-  border-radius: 3px;
-  padding: 0 3px;
-  font: 600 11px/15px var(--mono);
 }
 .zed-link:hover,
 .zed-link:focus-visible {
-  color: var(--ink);
   background: #263447;
 }
 #history-zed:empty {

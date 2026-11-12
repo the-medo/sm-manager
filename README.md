@@ -175,8 +175,9 @@ are treated as separate projects when discovered through their own root/path.
 
 Choose **Zed** in the sidebar to browse all published checkouts, including idle
 ones, by project family and repository. The main checkout appears first. Each
-**Z** link hands the published SSH URL to your browser's Zed handler. From
+**Open in Zed** link hands the published SSH URL to your browser's Zed handler. From
 Windows, the link opens the Steam Machine directory in your local Zed client.
+The icon is the white SVG logomark from [Zed's brand assets](https://zed.dev/brand#logomark).
 
 The dashboard rereads the version 1 catalog every minute. Set `zed_catalog_path`
 to use a different file. Monitor rows match catalog entries by absolute path.
@@ -318,7 +319,7 @@ stored or exposed. Metadata includes local paths, branch names, container image
 names, process names, and resource identities; keep dashboard access private.
 
 The server binds to loopback, validates the Host header, rejects cross-site
-requests, and sends no CORS permissions. The static server exposes only its four
+requests, and sends no CORS permissions. The static server exposes only its
 bundled assets. It has no mutation or shell-execution endpoint.
 
 ## Development

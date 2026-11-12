@@ -224,7 +224,7 @@ function zedLink(path) {
   const tree = state.zedByPath.get(path);
   if (!tree?.zed_url) return "";
   const label = e(`Open ${tree.name} in Zed`);
-  return `<a class="zed-link" href="${e(tree.zed_url)}" title="${label}" aria-label="${label}"><span aria-hidden="true">Z</span></a>`;
+  return `<a class="zed-link" href="${e(tree.zed_url)}" title="${label}" aria-label="${label}"><img src="/zed.svg" alt="" width="16" height="16"></a>`;
 }
 function renderZed(groups) {
   return groups.map((group) => `<article class="panel zed-family">

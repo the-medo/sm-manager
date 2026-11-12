@@ -103,7 +103,8 @@ def handler_for(collector, config):
                     plan = cleanup_plan(snapshot, url.path.rsplit("/", 1)[-1])
                     return self.respond(200 if plan else 404, plan or {"error": "Worktree not found"})
                 return self.respond(404, {"error": "Not found"})
-            name = {"/": "index.html", "/app.js": "app.js", "/style.css": "style.css", "/favicon.svg": "favicon.svg"}.get(url.path)
+            name = {"/": "index.html", "/app.js": "app.js", "/style.css": "style.css",
+                    "/favicon.svg": "favicon.svg", "/zed.svg": "zed.svg"}.get(url.path)
             if not name:
                 return self.respond(404, {"error": "Not found"})
             mime = mimetypes.guess_type(name)[0] or "application/octet-stream"
