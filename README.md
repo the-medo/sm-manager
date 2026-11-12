@@ -153,6 +153,7 @@ Create `~/.config/sm-manager/config.json` (or under `$XDG_CONFIG_HOME`):
   "discovery_interval": 60,
   "scan_depth": 4,
   "zed_catalog_path": "~/zed-projects/projects.json",
+  "db_catalog_path": "~/db-projects/connections.json",
   "docker_socket": "/var/run/docker.sock",
   "allowed_hosts": ["localhost", "127.0.0.1"],
   "container_overrides": {
@@ -184,6 +185,20 @@ to use a different file. Monitor rows match catalog entries by absolute path.
 For an existing checkout known only to the monitor, SM Manager uses the
 catalog's `ssh_base_url` and percent-encodes the directory path. If the catalog
 is unavailable, resource monitoring continues and the Zed page retries.
+
+### Open a database in CloudBeaver
+
+Choose **DBs** to browse the published connections by group, repository, and
+worktree. Entries without an owner appear under **Unassigned**. The database
+icon beside a checkout opens its available connection in a new tab. If several
+connections match, choose the worktree and database. Project actions cover all
+worktrees belonging to the same primary checkout.
+
+SM Manager reads `db_catalog_path` every minute. The external publisher handles
+discovery and CloudBeaver registration. **Configured** means a worktree declares
+the database and the publisher could not verify it. After three minutes without
+a new check, the DBs page shows the last reported statuses and suspends launch
+actions until the catalog is fresh.
 
 ### Docker ownership
 
@@ -292,6 +307,7 @@ Same-origin, read-only HTTP endpoints:
 | `GET /api/health` | Collector readiness and sample freshness |
 | `GET /api/snapshot` | Projects, worktrees, processes, containers, Codex, host |
 | `GET /api/zed` | Published checkout groups with revisions and Zed URLs, plus links for monitor-only directories |
+| `GET /api/dbs` | Database connections, ownership, last check time, freshness, and validated CloudBeaver links |
 | `GET /api/history?hours=24&entity=host` | Time-bucketed CPU and memory |
 | `GET /api/cleanup-plan/<worktree-id>` | Resource identities and a cleanup brief |
 | `GET /api/disk-usage` | Cached per-project scan results and current scan status |
@@ -327,6 +343,7 @@ bundled assets. It has no mutation or shell-execution endpoint.
 ```bash
 python3 -m unittest discover -s tests -v
 python3 -m compileall -q sm_manager scripts
+node --test tests/test_dbs_ui.js
 ```
 
 The backend is Python's standard library. The UI is plain HTML, CSS, and

@@ -102,6 +102,7 @@ class Discovery:
                 if line.startswith("worktree ") and Path(line[9:]).is_dir():
                     expanded.add(str(Path(line[9:]).resolve()))
         found = {}
+        primary_paths = {}
         for path in sorted(expanded):
             output = run(["git", "-C", path, "rev-parse", "--path-format=absolute", "--git-common-dir", "--show-toplevel"])
             lines = output.splitlines()
@@ -115,9 +116,11 @@ class Discovery:
             branch = run(["git", "-C", top, "symbolic-ref", "--quiet", "--short", "HEAD"]) or "detached"
             branch = branch.removeprefix("refs/heads/")
             wid = identity(top)
+            pid = identity(common)
+            primary_paths[pid] = main
             found[wid] = {
                 "id": wid, "path": top, "name": Path(top).name,
-                "project_id": identity(common), "project_name": project_name,
+                "project_id": pid, "project_name": project_name,
                 "branch": branch, "is_main": top == main,
                 "codex_managed": within(top, str(Path(self.config["codex_home"]) / "worktrees")),
             }
@@ -129,6 +132,7 @@ class Discovery:
             if pid in project_info:
                 continue
             info, icon = inspect_project(worktree["path"])
+            info["primary_path"] = primary_paths[pid]
             info["repository_url"] = repository_url(run(["git", "-C", worktree["path"], "config", "--get", "remote.origin.url"]))
             info["icon_url"] = f"/api/project-icon/{pid}/{icon['version']}" if icon else ""
             project_info[pid] = info

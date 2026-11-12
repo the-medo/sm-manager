@@ -8,6 +8,7 @@
     <title>SM Manager · Overview</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/style.css" />
+    <script src="/dbs.js" defer></script>
     <script src="/app.js" defer></script>
   </head>
   <body>
@@ -37,6 +38,9 @@
         >
         <a href="#zed" data-view="zed" class="nav-link"
           ><img class="nav-icon" src="/zed.svg" alt="" width="17" height="17" /> Zed</a
+        >
+        <a href="#dbs" data-view="dbs" class="nav-link"
+          ><img class="nav-icon" src="/db.svg" alt="" width="17" height="17" /> DBs</a
         >
       </nav>
       <div class="sidebar-bottom">
@@ -126,7 +130,7 @@
                   <option value="codex">Codex processes</option>
                   <option value="other">System &amp; other</option>
                 </select>
-                <span id="history-zed"></span>
+                <span id="history-actions" class="checkout-actions"></span>
               </div>
               <div
                 id="chart"
@@ -208,6 +212,10 @@
         <section id="zed-section" aria-label="Zed checkout catalog" hidden>
           <p class="section-note">Loading Zed catalog…</p>
         </section>
+        <section id="dbs-section" aria-label="Database catalog" hidden>
+          <p id="dbs-status" class="section-note" role="status">Loading DB catalog…</p>
+          <div id="dbs-groups"></div>
+        </section>
         <section id="storage-section" hidden>
           <div class="section-heading"><h2>Disk usage by project</h2><span class="subtle-tag">ON DEMAND</span></div>
           <p class="inline-note">Scan a project to measure its worktrees, dependencies, build caches, and associated Docker storage. Results are cached; nothing is deleted.</p>
@@ -229,7 +237,7 @@
       <div class="dialog-header">
         <div>
           <div class="eyebrow" id="detail-project"></div>
-          <div class="checkout-actions"><h2 id="detail-title"></h2><span id="detail-zed"></span></div>
+          <div class="checkout-actions"><h2 id="detail-title"></h2><span id="detail-actions" class="checkout-actions"></span></div>
         </div>
         <button
           class="icon-button"
@@ -240,6 +248,13 @@
         </button>
       </div>
       <div id="detail-content"></div>
+    </dialog>
+    <dialog id="db-chooser" aria-labelledby="db-chooser-title">
+      <div class="dialog-header">
+        <h2 id="db-chooser-title">Open in CloudBeaver</h2>
+        <button class="icon-button" id="close-db-chooser" aria-label="Close database chooser">×</button>
+      </div>
+      <div id="db-choices"></div>
     </dialog>
     <div id="toast" class="toast" role="status" hidden></div>
   </body>

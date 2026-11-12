@@ -7,6 +7,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from .collector import Collector, cleanup_plan
+from .dbs import read_db_catalog
 from .history import RETENTION_HOURS
 from .zed import read_catalog
 
@@ -49,6 +50,14 @@ def handler_for(collector, config):
                 return self.respond(403, {"error": "Origin not allowed"})
             url = urlsplit(self.path)
             if url.path.startswith("/api/"):
+                if url.path == "/api/dbs":
+                    try:
+                        catalog = read_db_catalog(config["db_catalog_path"])
+                    except OSError:
+                        return self.respond(503, {"error": "Could not read the DB catalog. Check db_catalog_path."})
+                    except (ValueError, RecursionError):
+                        return self.respond(503, {"error": "Invalid DB catalog. Expected a version 1 connections file with a UTC check time."})
+                    return self.respond(200, catalog)
                 snapshot = collector.get_snapshot()
                 if url.path == "/api/zed":
                     projects = (snapshot or {}).get("projects", [])
@@ -104,7 +113,8 @@ def handler_for(collector, config):
                     return self.respond(200 if plan else 404, plan or {"error": "Worktree not found"})
                 return self.respond(404, {"error": "Not found"})
             name = {"/": "index.html", "/app.js": "app.js", "/style.css": "style.css",
-                    "/favicon.svg": "favicon.svg", "/zed.svg": "zed.svg"}.get(url.path)
+                    "/favicon.svg": "favicon.svg", "/zed.svg": "zed.svg", "/db.svg": "db.svg",
+                    "/dbs.js": "dbs.js"}.get(url.path)
             if not name:
                 return self.respond(404, {"error": "Not found"})
             mime = mimetypes.guess_type(name)[0] or "application/octet-stream"

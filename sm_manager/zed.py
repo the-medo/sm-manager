@@ -54,7 +54,7 @@ def read_catalog(filename, monitor_paths):
             trees = [checkout(item, repo.get("primary_path")) for item in entries(repo, "worktrees")]
             trees.sort(key=lambda tree: not tree["is_main"])
             catalog_paths.update(tree["path"] for tree in trees)
-            repositories.append({"name": name_of(repo), "worktrees": trees})
+            repositories.append({"name": name_of(repo), "primary_path": repo.get("primary_path"), "worktrees": trees})
         groups.append({"name": name_of(group), "repositories": repositories})
 
     monitor_only = []
