@@ -72,7 +72,7 @@ class DbCatalogTests(unittest.TestCase):
         self.assertEqual(fresh["connections"], [self.db])
 
     def test_external_group_preserves_name_and_launch_rules_without_checkout_ownership(self):
-        external = dict(self.db, group="Demo DEV", name="dev-example", owner=None)
+        external = dict(self.db, group="Demo DEV", name="dev-example", owner=None, group_checked_at=self.now.isoformat())
         self.publish([external, dict(external, id="offline", status="configured")])
         online, offline = read_db_catalog(self.path)["connections"]
         self.assertEqual(online, external)

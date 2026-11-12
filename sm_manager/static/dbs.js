@@ -78,7 +78,9 @@ function dbGroups(connections) {
   const otherGroups = groupedBy(external, (db) => db.group);
   if (unassigned.length) otherGroups.push(unassigned);
   for (const group of otherGroups) {
-    panels.push(`<article class="panel zed-family"><div class="panel-heading"><h2>${e(group[0].group || "Unassigned")}</h2></div><div class="zed-repo">${dbRows(group)}</div></article>`);
+    const checked = group[0].group_checked_at;
+    const time = checked ? `<span class="storage-meta">Last synced <time datetime="${e(checked)}">${e(new Date(checked).toLocaleString())}</time></span>` : "";
+    panels.push(`<article class="panel zed-family"><div class="panel-heading"><h2>${e(group[0].group || "Unassigned")}</h2>${time}</div><div class="zed-repo">${dbRows(group)}</div></article>`);
   }
   return panels.join("");
 }

@@ -51,6 +51,10 @@ def connection(record, stale):
     owner = record["owner"]
     if owner is None and record.get("group") is not None:
         entry.update(text_fields(record, ("group",)))
+        if "group_checked_at" in record:
+            entry.update(text_fields(record, ("group_checked_at",)))
+            if datetime.fromisoformat(entry["group_checked_at"]).utcoffset() != timedelta(0):
+                raise ValueError("Expected UTC group check time")
     if owner is not None:
         owner = text_fields(owner, ("group", "repository", "primary_path", "worktree", "worktree_path"))
         if not all(os.path.isabs(owner[key]) for key in ("primary_path", "worktree_path")):
