@@ -21,6 +21,7 @@ def load_config(path=None):
         "allowed_hosts": ["localhost", "127.0.0.1"],
         "docker_socket": "/var/run/docker.sock",
         "zed_catalog_path": "~/zed-projects/projects.json",
+        "db_catalog_path": "~/db-projects/connections.json",
         "container_overrides": {},
     }
     config.update(custom)
@@ -28,6 +29,7 @@ def load_config(path=None):
     config["data_dir"] = str(Path(config["data_dir"]).expanduser())
     config["codex_home"] = str(Path(config["codex_home"]).expanduser())
     config["zed_catalog_path"] = str(Path(config["zed_catalog_path"]).expanduser())
+    config["db_catalog_path"] = str(Path(config["db_catalog_path"]).expanduser())
     config["interval"] = max(2, int(config["interval"]))
     config["discovery_interval"] = max(30, int(config["discovery_interval"]))
     if not 1024 <= int(config["port"]) <= 65535:

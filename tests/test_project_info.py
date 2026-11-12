@@ -128,6 +128,7 @@ class ProjectInfoTests(unittest.TestCase):
         self.assertEqual(len(discovery.project_info), 1)
         pid, info = next(iter(discovery.project_info.items()))
         self.assertEqual(info['description'], 'Primary checkout')
+        self.assertEqual(info['primary_path'], str(repository))
         self.assertEqual(info['repository_url'], 'https://example.test/app')
         first_url = info['icon_url']
         self.write('project/favicon.svg', SVG.replace(b'24', b'32'))
