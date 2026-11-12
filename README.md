@@ -189,7 +189,9 @@ is unavailable, resource monitoring continues and the Zed page retries.
 ### Open a database in CloudBeaver
 
 Choose **DBs** to browse the published connections by group, repository, and
-worktree. Entries without an owner appear under **Unassigned**. The database
+worktree. External entries can supply a top-level `group` with a null `owner`.
+Each group lists the published connection name and database. Entries without
+an owner or group appear under **Unassigned**. The database
 icon beside a checkout opens its available connection in a new tab. If several
 connections match, choose the worktree and database. Project actions cover all
 worktrees belonging to the same primary checkout.

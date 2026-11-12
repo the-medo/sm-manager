@@ -9,7 +9,7 @@ function dbMatches(path, ownerKey) {
 
 function dbLink(db, showName = false) {
   if (state.dbCatalog?.stale || db.status !== "available" || !db.cloudbeaver_url) return "";
-  const name = [db.owner?.worktree, db.database].filter(Boolean).join(" / ");
+  const name = [db.owner?.worktree || (db.group && db.name), db.database].filter(Boolean).join(" / ");
   const label = e(`Open in CloudBeaver — ${name}`);
   return `<a class="db-link ${showName ? "db-choice" : "checkout-icon"}" href="${e(db.cloudbeaver_url)}" target="_blank" rel="noopener noreferrer" title="${label}" aria-label="${label}">${dbIcon}${showName ? e(name) : ""}</a>`;
 }
@@ -53,7 +53,10 @@ function dbRows(dbs) {
   return `<ul class="db-rows">${dbs.map((db) => {
     const host = db.host?.includes(":") && !db.host.startsWith("[") ? `[${db.host}]` : db.host;
     const endpoint = [host, db.port].filter((part) => part != null).join(":");
-    return `<li><strong>${e(db.database)}</strong><span>${e(db.engine)}</span><code>${e(endpoint || "Endpoint unavailable")}</code>
+    const title = db.group && !db.owner
+      ? `${e(db.name)}<small class="db-catalog-name">${e(db.database)}</small>`
+      : e(db.database);
+    return `<li><strong>${title}</strong><span>${e(db.engine)}</span><code>${e(endpoint || "Endpoint unavailable")}</code>
       <span class="db-status" data-status="${e(db.status)}">${e(db.status)}</span>${dbLink(db)}</li>`;
   }).join("")}</ul>`;
 }
@@ -70,8 +73,13 @@ function dbGroups(connections) {
           return `<section class="db-worktree"><h4 title="${e(owner.worktree_path)}">${e(owner.worktree)} <span class="zed-revision">${e(owner.branch || "Branch unavailable")}</span></h4>${dbRows(tree)}</section>`;
         }).join("")}</section>`).join("")}</article>`;
   });
-  const unassigned = connections.filter((db) => !db.owner);
-  if (unassigned.length) panels.push(`<article class="panel zed-family"><div class="panel-heading"><h2>Unassigned</h2></div><div class="zed-repo">${dbRows(unassigned)}</div></article>`);
+  const external = connections.filter((db) => !db.owner && db.group);
+  const unassigned = connections.filter((db) => !db.owner && !db.group);
+  const otherGroups = groupedBy(external, (db) => db.group);
+  if (unassigned.length) otherGroups.push(unassigned);
+  for (const group of otherGroups) {
+    panels.push(`<article class="panel zed-family"><div class="panel-heading"><h2>${e(group[0].group || "Unassigned")}</h2></div><div class="zed-repo">${dbRows(group)}</div></article>`);
+  }
   return panels.join("");
 }
 
@@ -90,7 +98,7 @@ function renderDbsPage() {
     html = dbGroups(catalog.connections);
     if (!html && !catalog.stale) html = '<div class="empty">No databases in the catalog.</div>';
     if (catalog.connections.some((db) => db.status === "configured"))
-      html += '<p class="section-note">Configured databases are declared by a worktree. The last check could not verify them.</p>';
+      html += '<p class="section-note">Configured databases are listed by their source. The last check could not verify them.</p>';
   }
   if (html !== renderDbsPage.html) {
     $("dbs-groups").innerHTML = html;

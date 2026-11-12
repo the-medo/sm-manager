@@ -49,6 +49,8 @@ def connection(record, stale):
     if port is not None and (type(port) is not int or not 0 < port <= 65535):
         raise ValueError("Invalid database port")
     owner = record["owner"]
+    if owner is None and record.get("group") is not None:
+        entry.update(text_fields(record, ("group",)))
     if owner is not None:
         owner = text_fields(owner, ("group", "repository", "primary_path", "worktree", "worktree_path"))
         if not all(os.path.isabs(owner[key]) for key in ("primary_path", "worktree_path")):
