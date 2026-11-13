@@ -422,6 +422,18 @@ p {
 .table-scroll {
   overflow-x: auto;
 }
+:is(
+  tbody > tr,
+  .worktree-row,
+  .project-heading,
+  .project-directory .checkout-actions,
+  .storage-project > .panel-heading,
+  .zed-repo > h3.checkout-actions,
+  .zed-repo li,
+  .detail-service
+):is(:hover, :has(:focus-visible)) {
+  background-color: #223448;
+}
 .compact-table {
   border-collapse: collapse;
   width: 100%;
@@ -493,7 +505,9 @@ p {
   background: transparent;
 }
 .checkout-icon:hover,
-.checkout-icon:focus-visible,
+.checkout-icon:focus-visible {
+  background: #354e69;
+}
 .db-choice:hover,
 .db-choice:focus-visible {
   background: #263447;
@@ -527,7 +541,7 @@ p {
   grid-template-columns: minmax(0, 1fr) minmax(0, 34%) auto;
   gap: 8px;
   align-items: center;
-  padding: 6px 0;
+  padding: 6px;
   font: 11px/1.4 var(--mono);
   overflow-wrap: anywhere;
 }
@@ -1146,9 +1160,6 @@ select {
   cursor: pointer;
   min-height: 32px;
 }
-.worktree-row:hover {
-  background: #1b2939;
-}
 .worktree-name {
   display: flex;
   align-items: center;
@@ -1367,9 +1378,6 @@ footer {
 }
 .container-table tr:last-child td {
   border-bottom: 0;
-}
-.container-row:hover {
-  background: #182330;
 }
 .container-name,
 .container-image,
